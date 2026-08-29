@@ -1,0 +1,31 @@
+[versions]
+agp = "8.2.2"
+kotlin = "1.9.22"
+compileSdk = "34"
+minSdk = "26"
+targetSdk = "34"
+buildTools = "34.0.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.12.0" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.6.1" }
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version = "2.7.0" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version = "2.7.0" }
+accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version = "0.34.0" }
+gson = { group = "com.google.code.gson", name = "gson", version = "2.10.1" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version = "1.7.3" }
+nordic-ble = { group = "no.nordicsemi.android", name = "ble", version = "2.6.1" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.12.0" }
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version = "2.9.0" }
+nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version = "2.3.1" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version = "1.1.0-alpha06" }
+bouncycastle-bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version = "1.77" }
+
+[bundles]
+lifecycle = ["androidx-lifecycle-runtime-ktx"]
+cryptography = ["bouncycastle-bcprov"]
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
