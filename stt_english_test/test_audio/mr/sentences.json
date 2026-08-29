@@ -1,0 +1,5 @@
+[
+  { "id": "mr_01", "category": "Normal", "reference": "नमस्कार तुम्ही कसे आहात" },
+  { "id": "mr_02", "category": "Normal", "reference": "बैठक दहा वाजता सुरू होईल" },
+  { "id": "mr_03", "category": "Emergency", "reference": "उत्तर दरवाजाजवळ आग लागली आहे" }
+]

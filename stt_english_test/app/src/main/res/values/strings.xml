@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">STT English Test</string>
+    <string name="model_title">Model: NeMo Conformer-CTC Small (INT8)</string>
+    <string name="status_loading">Model: Loading…</string>
+    <string name="status_ready">Model: Ready ✓</string>
+    <string name="status_error">Model: Error</string>
+    <string name="btn_start_recording">START RECORDING</string>
+    <string name="btn_stop_recording">STOP RECORDING</string>
+    <string name="state_idle">Ready to record</string>
+    <string name="state_recording">Recording speech…</string>
+    <string name="state_processing">Processing offline STT inference…</string>
+    <string name="transcript_placeholder">Tap START RECORDING and speak in English…</string>
+    <string name="transcript_header">Transcript</string>
+    <string name="metrics_header">Benchmark Metrics</string>
+    <string name="audio_duration_label">Audio Duration</string>
+    <string name="inference_time_label">Inference Time</string>
+    <string name="rtf_label">Real-Time Factor (RTF)</string>
+    <string name="memory_label">Memory (RAM)</string>
+    <string name="model_load_label">Model Load Time</string>
+    <string name="err_mic_permission">Microphone permission is required.</string>
+    <string name="err_empty_recording">No speech recorded.</string>
+    <string name="err_transcription_failed">Transcription failed.</string>
+    <string name="err_model_load_failed">STT model could not be loaded.</string>
+</resources>

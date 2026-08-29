@@ -1,0 +1,7 @@
+[
+  { "id": "hi_01", "category": "Normal", "reference": "नमस्ते आप कैसे हैं" },
+  { "id": "hi_02", "category": "Normal", "reference": "बैठक दस बजे शुरू होगी" },
+  { "id": "hi_03", "category": "Numbers", "reference": "सेक्टर तीन में पच्चीस इकाइयां भेजें" },
+  { "id": "hi_04", "category": "Emergency", "reference": "उत्तरी गेट के पास आग लगी है तुरंत सहायता भेजें" },
+  { "id": "hi_05", "category": "Names", "reference": "राहुल कुमार से तुरंत संपर्क करें" }
+]

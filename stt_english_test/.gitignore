@@ -82,7 +82,6 @@ __pycache__/
 *.pt
 *.tflite
 models/
-stt_english_test/models/
-stt_english_test/app/libs/
-stt_english_test/app/src/main/assets/english/*.onnx
-stt_english_test/app/src/main/assets/indicconformer/*.onnx
+app/libs/
+app/src/main/assets/english/*.onnx
+app/src/main/assets/indicconformer/*.onnx

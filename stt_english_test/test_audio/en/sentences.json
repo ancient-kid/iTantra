@@ -1,0 +1,7 @@
+[
+  { "id": "en_01", "category": "Normal", "reference": "Hello, how are you today?" },
+  { "id": "en_02", "category": "Normal", "reference": "The meeting starts at ten o'clock." },
+  { "id": "en_03", "category": "Numbers", "reference": "Send twenty five units to sector three." },
+  { "id": "en_04", "category": "Emergency", "reference": "There is a fire near the northern gate." },
+  { "id": "en_05", "category": "Names", "reference": "Contact Rahul Kumar immediately." }
+]

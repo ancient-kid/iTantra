@@ -1,0 +1,67 @@
+[
+  {
+    "id": "norm_001",
+    "category": "Normal",
+    "reference": "Hello, how are you today?"
+  },
+  {
+    "id": "norm_002",
+    "category": "Normal",
+    "reference": "The weather is clear this morning."
+  },
+  {
+    "id": "norm_003",
+    "category": "Normal",
+    "reference": "I am going to the railway station."
+  },
+  {
+    "id": "norm_004",
+    "category": "Normal",
+    "reference": "Please send the report before five o'clock."
+  },
+  {
+    "id": "num_001",
+    "category": "Numbers",
+    "reference": "There are twenty five people here."
+  },
+  {
+    "id": "num_002",
+    "category": "Numbers",
+    "reference": "The meeting starts at ten thirty."
+  },
+  {
+    "id": "num_003",
+    "category": "Numbers",
+    "reference": "Send five units to sector three."
+  },
+  {
+    "id": "emg_001",
+    "category": "Emergency",
+    "reference": "There is a fire near the northern gate."
+  },
+  {
+    "id": "emg_002",
+    "category": "Emergency",
+    "reference": "Please evacuate the building immediately."
+  },
+  {
+    "id": "emg_003",
+    "category": "Emergency",
+    "reference": "We need medical assistance."
+  },
+  {
+    "id": "emg_004",
+    "category": "Emergency",
+    "reference": "The bridge has been damaged."
+  },
+  {
+    "id": "diff_001",
+    "category": "Difficult",
+    "reference": "The preliminary reconnaissance mission encountered unprecedented meteorological interference."
+  },
+  {
+    "id": "diff_002",
+    "category": "Difficult",
+    "reference": "Coordinate eighty seven point four six five with battalion dispatch promptly."
+  }
+]
