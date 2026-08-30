@@ -1,0 +1,8 @@
+[
+  { "id": "en_norm_01", "category": "Normal", "text": "The primary objective is to maintain network integrity." },
+  { "id": "en_norm_02", "category": "Normal", "text": "We are heading towards the command post now." },
+  { "id": "en_emerg_01", "category": "Emergency", "text": "Please evacuate the building immediately via the northern exit." },
+  { "id": "en_emerg_02", "category": "Emergency", "text": "Medical assistance is urgently requested at checkpoint four." },
+  { "id": "en_num_01", "category": "Numbers", "text": "Confirm delivery of 450 rations to sector 12." },
+  { "id": "en_name_01", "category": "Names", "text": "Officer Sharma and Lieutenant Khan are on patrol." }
+]

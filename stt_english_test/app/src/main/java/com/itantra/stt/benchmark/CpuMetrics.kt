@@ -18,9 +18,20 @@ object CpuMetrics {
             val statContent = statFile.readLine()
             statFile.close()
 
-            val pieces = statContent.split(" ")
-            val utime = pieces[13].toLong()
-            val stime = pieces[14].toLong()
+            if (statContent.isNullOrEmpty()) return 0.0
+
+            val closeParen = statContent.lastIndexOf(')')
+            if (closeParen == -1 || closeParen + 2 >= statContent.length) return 0.0
+
+            val pieces = statContent.substring(closeParen + 2).trim().split("\\s+".toRegex())
+            if (pieces.size < 13) return 0.0
+
+            // In /proc/pid/stat:
+            // pieces[0] = state (field 3)
+            // pieces[11] = utime (field 14)
+            // pieces[12] = stime (field 15)
+            val utime = pieces[11].toLongOrNull() ?: return 0.0
+            val stime = pieces[12].toLongOrNull() ?: return 0.0
             val totalCpuTime = utime + stime
 
             val now = SystemClock.elapsedRealtime()
@@ -37,12 +48,13 @@ object CpuMetrics {
             lastSampleTime = now
 
             if (timeDiff > 0) {
-                val percent = (cpuDiff.toDouble() * 1000.0 / timeDiff) / Runtime.getRuntime().availableProcessors()
+                val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+                val percent = (cpuDiff.toDouble() * 1000.0 / timeDiff) / cores
                 percent.coerceIn(0.0, 100.0)
             } else {
                 0.0
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             0.0
         }
     }

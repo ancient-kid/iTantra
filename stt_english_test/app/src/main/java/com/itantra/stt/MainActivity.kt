@@ -6,19 +6,24 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.itantra.stt.audio.AudioPlayer
 import com.itantra.stt.audio.AudioRecorder
 import com.itantra.stt.benchmark.CpuMetrics
 import com.itantra.stt.benchmark.MemoryMetrics
 import com.itantra.stt.benchmark.SttMetrics
+import com.itantra.stt.benchmark.TtsMetrics
 import com.itantra.stt.databinding.ActivityMainBinding
 import com.itantra.stt.model.Language
 import com.itantra.stt.model.ModelManager
+import com.itantra.stt.model.TtsManager
+import com.itantra.stt.tts.TtsResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,11 +33,15 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * Dual-Model Speech-to-Text Evaluation Test Bench (English + IndicConformer).
+ * Unified Speech-to-Text (STT) + Text-to-Speech (TTS) Test Bench for iTantra.
  */
 class MainActivity : AppCompatActivity() {
 
-    private enum class AppState {
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
+    private enum class SttState {
         IDLE,
         RECORDING,
         PROCESSING,
@@ -41,21 +50,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var modelManager: ModelManager
-    private val audioRecorder = AudioRecorder()
+    private lateinit var sttModelManager: ModelManager
+    private lateinit var ttsManager: TtsManager
 
-    private var currentState = AppState.IDLE
-    private var selectedLanguage = Language.EN
-    private var recordingStartTime = 0L
-    private var timerJob: Job? = null
+    private val audioRecorder = AudioRecorder()
+    private lateinit var audioPlayer: AudioPlayer
+
+    private var currentSttState = SttState.IDLE
+    private var selectedSttLanguage = Language.EN
+    private var selectedTtsLanguage = Language.EN
+
+    private var sttRecordingStartTime = 0L
+    private var sttTimerJob: Job? = null
+
+    private var lastTtsResult: TtsResult? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
             if (isGranted) {
-                hideError()
+                hideSttError()
                 startRecordingFlow()
             } else {
-                showError("Microphone permission is required.")
+                showSttError("Microphone permission is required for STT.")
                 Toast.makeText(this, "Microphone permission is required.", Toast.LENGTH_LONG).show()
             }
         }
@@ -65,104 +81,140 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        modelManager = ModelManager(applicationContext)
+        sttModelManager = ModelManager(applicationContext)
+        ttsManager = TtsManager(applicationContext)
+        audioPlayer = AudioPlayer(applicationContext)
 
-        setupLanguageChips()
-        setupListeners()
-        switchLanguage(Language.EN)
+        setupNavigationTabs()
+        setupSttUi()
+        setupTtsUi()
+
+        // Load STT default language on startup (TTS is loaded lazily on tab switch)
+        switchSttLanguage(Language.EN)
     }
 
-    private fun setupLanguageChips() {
-        binding.chipGroupLanguages.setOnCheckedStateChangeListener { _, checkedIds ->
+    // ========================================================
+    // TAB NAVIGATION (STT vs TTS)
+    // ========================================================
+    private fun setupNavigationTabs() {
+        binding.tabToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+
+            when (checkedId) {
+                R.id.btnTabStt -> {
+                    binding.layoutSttContainer.visibility = View.VISIBLE
+                    binding.layoutTtsContainer.visibility = View.GONE
+                    audioPlayer.stop()
+                    binding.btnPlaySpeech.isEnabled = lastTtsResult != null && lastTtsResult!!.audio.isNotEmpty()
+                    binding.btnStopSpeech.isEnabled = false
+                }
+                R.id.btnTabTts -> {
+                    binding.layoutSttContainer.visibility = View.GONE
+                    binding.layoutTtsContainer.visibility = View.VISIBLE
+                    if (currentSttState == SttState.RECORDING) {
+                        audioRecorder.stopRecording()
+                        currentSttState = SttState.IDLE
+                        resetSttButtonUi()
+                    }
+                    if (!ttsManager.isLoaded()) {
+                        switchTtsLanguage(selectedTtsLanguage)
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================
+    // STT MODULE
+    // ========================================================
+    private fun setupSttUi() {
+        binding.chipGroupSttLanguages.setOnCheckedStateChangeListener { _, checkedIds ->
             if (checkedIds.isEmpty()) return@setOnCheckedStateChangeListener
 
             val targetLang = when (checkedIds.first()) {
-                R.id.chipEn -> Language.EN
-                R.id.chipHi -> Language.HI
-                R.id.chipGu -> Language.GU
-                R.id.chipMr -> Language.MR
-                R.id.chipKn -> Language.KN
-                R.id.chipMl -> Language.ML
-                R.id.chipTa -> Language.TA
-                R.id.chipTe -> Language.TE
-                R.id.chipBn -> Language.BN
-                R.id.chipOr -> Language.OR
+                R.id.chipSttEn -> Language.EN
+                R.id.chipSttHi -> Language.HI
+                R.id.chipSttGu -> Language.GU
+                R.id.chipSttMr -> Language.MR
+                R.id.chipSttKn -> Language.KN
+                R.id.chipSttMl -> Language.ML
+                R.id.chipSttTa -> Language.TA
+                R.id.chipSttTe -> Language.TE
+                R.id.chipSttBn -> Language.BN
+                R.id.chipSttOr -> Language.OR
                 else -> Language.EN
             }
 
-            if (currentState == AppState.RECORDING) {
+            if (currentSttState == SttState.RECORDING) {
                 audioRecorder.stopRecording()
-                currentState = AppState.IDLE
-                resetButtonUi()
+                currentSttState = SttState.IDLE
+                resetSttButtonUi()
             }
 
-            switchLanguage(targetLang)
+            switchSttLanguage(targetLang)
         }
-    }
 
-    private fun setupListeners() {
         binding.btnRecord.setOnClickListener {
-            when (currentState) {
-                AppState.IDLE, AppState.COMPLETE, AppState.ERROR -> {
-                    checkAndStartRecording()
-                }
-                AppState.RECORDING -> {
-                    stopRecordingAndTranscribe()
-                }
-                AppState.PROCESSING -> {
-                    // Do nothing while busy
-                }
+            when (currentSttState) {
+                SttState.IDLE, SttState.COMPLETE, SttState.ERROR -> checkAndStartRecording()
+                SttState.RECORDING -> stopRecordingAndTranscribe()
+                SttState.PROCESSING -> {}
             }
         }
     }
 
-    private fun switchLanguage(language: Language) {
-        selectedLanguage = language
-        hideError()
+    private fun switchSttLanguage(language: Language) {
+        selectedSttLanguage = language
+        hideSttError()
 
         if (!language.isSupported) {
-            binding.tvActiveModelName.text = "Odia IndicConformer"
-            binding.tvActiveModelDetails.text = "Model pending mobile INT8 export verification"
-            binding.tvActiveModelStatus.text = "⚠ Not yet available"
-            binding.tvActiveModelStatus.setTextColor(Color.parseColor("#F59E0B"))
-            binding.tvModelLoadDuration.text = "-"
+            binding.tvActiveSttModelName.text = "Odia IndicConformer"
+            binding.tvActiveSttModelDetails.text = "Model pending mobile export verification"
+            binding.tvActiveSttModelStatus.text = "⚠ Not yet available"
+            binding.tvActiveSttModelStatus.setTextColor(Color.parseColor("#F59E0B"))
+            binding.tvSttModelLoadDuration.text = "-"
             binding.btnRecord.isEnabled = false
             return
         }
 
-        binding.tvActiveModelStatus.text = "Loading ${language.displayName} model…"
-        binding.tvActiveModelStatus.setTextColor(Color.parseColor("#F59E0B"))
-        binding.tvModelLoadDuration.text = "Loading…"
+        binding.tvActiveSttModelStatus.text = "Loading ${language.displayName} model…"
+        binding.tvActiveSttModelStatus.setTextColor(Color.parseColor("#F59E0B"))
+        binding.tvSttModelLoadDuration.text = "Loading…"
         binding.btnRecord.isEnabled = false
 
         lifecycleScope.launch {
-            val memBefore = MemoryMetrics.captureSnapshot()
-            val startTime = SystemClock.elapsedRealtime()
-            val success = modelManager.loadLanguage(language)
-            val loadTimeMs = SystemClock.elapsedRealtime() - startTime
+            try {
+                val memBefore = MemoryMetrics.captureSnapshot()
+                val startTime = SystemClock.elapsedRealtime()
+                val success = sttModelManager.loadLanguage(language)
+                val loadTimeMs = SystemClock.elapsedRealtime() - startTime
 
-            if (success) {
-                val modelInfo = modelManager.getCurrentModelInfo()
-                binding.tvActiveModelName.text = modelInfo?.modelName ?: language.displayName
-                binding.tvActiveModelDetails.text = "Format: ${modelInfo?.format} | Quantization: ${modelInfo?.quantization} | Family: ${modelInfo?.familyName}"
-                binding.tvActiveModelStatus.text = "● ${language.displayName} Model Ready ✓"
-                binding.tvActiveModelStatus.setTextColor(Color.parseColor("#10B981"))
-                binding.tvModelLoadDuration.text = "Load: $loadTimeMs ms"
-                binding.btnRecord.isEnabled = true
+                if (success) {
+                    val modelInfo = sttModelManager.getCurrentModelInfo()
+                    binding.tvActiveSttModelName.text = modelInfo?.modelName ?: language.displayName
+                    binding.tvActiveSttModelDetails.text = "Format: ${modelInfo?.format} | Quantization: ${modelInfo?.quantization} | Family: ${modelInfo?.familyName}"
+                    binding.tvActiveSttModelStatus.text = "● ${language.displayName} Model Ready ✓"
+                    binding.tvActiveSttModelStatus.setTextColor(Color.parseColor("#10B981"))
+                    binding.tvSttModelLoadDuration.text = "Load: $loadTimeMs ms"
+                    binding.btnRecord.isEnabled = true
 
-                val memAfter = MemoryMetrics.captureSnapshot()
-                binding.tvMemoryStats.text = String.format(
-                    Locale.US,
-                    "Heap: %.1f MB (Loaded: %.1f MB) | Native: %.1f MB",
-                    memAfter.usedHeapMb,
-                    memAfter.usedHeapMb - memBefore.usedHeapMb,
-                    memAfter.nativeHeapMb
-                )
-            } else {
-                binding.tvActiveModelStatus.text = "Failed to load model"
-                binding.tvActiveModelStatus.setTextColor(Color.parseColor("#DC2626"))
-                binding.tvModelLoadDuration.text = "Error"
-                showError("Could not load STT model for ${language.displayName}")
+                    val memAfter = MemoryMetrics.captureSnapshot()
+                    binding.tvSttMemoryStats.text = String.format(
+                        Locale.US,
+                        "Heap: %.1f MB (Loaded: %.1f MB) | Native: %.1f MB",
+                        memAfter.usedHeapMb,
+                        memAfter.usedHeapMb - memBefore.usedHeapMb,
+                        memAfter.nativeHeapMb
+                    )
+                } else {
+                    binding.tvActiveSttModelStatus.text = "Failed to load model"
+                    binding.tvActiveSttModelStatus.setTextColor(Color.parseColor("#DC2626"))
+                    binding.tvSttModelLoadDuration.text = "Error"
+                    showSttError("Could not load STT model for ${language.displayName}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception switching STT language", e)
+                showSttError("STT loading error: ${e.message}")
             }
         }
     }
@@ -170,7 +222,7 @@ class MainActivity : AppCompatActivity() {
     private fun checkAndStartRecording() {
         val permission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
         if (permission == PackageManager.PERMISSION_GRANTED) {
-            hideError()
+            hideSttError()
             startRecordingFlow()
         } else {
             requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -180,131 +232,394 @@ class MainActivity : AppCompatActivity() {
     private fun startRecordingFlow() {
         val started = audioRecorder.startRecording(lifecycleScope)
         if (!started) {
-            showError("Failed to initialize microphone.")
+            showSttError("Failed to initialize microphone.")
             return
         }
 
-        currentState = AppState.RECORDING
-        recordingStartTime = SystemClock.elapsedRealtime()
+        currentSttState = SttState.RECORDING
+        sttRecordingStartTime = SystemClock.elapsedRealtime()
 
-        // Update UI
         binding.btnRecord.text = "STOP RECORDING"
         binding.btnRecord.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#DC2626"))
-        binding.tvRecordingStatus.text = "Status: Recording speech (${selectedLanguage.displayName})…"
+        binding.tvRecordingStatus.text = "Status: Recording speech (${selectedSttLanguage.displayName})…"
         binding.tvRecordingStatus.setTextColor(Color.parseColor("#DC2626"))
         binding.tvTranscript.text = "Listening for speech…"
 
-        // Start timer
-        timerJob?.cancel()
-        timerJob = lifecycleScope.launch {
-            while (isActive && currentState == AppState.RECORDING) {
-                val elapsedSec = (SystemClock.elapsedRealtime() - recordingStartTime) / 1000f
+        sttTimerJob?.cancel()
+        sttTimerJob = lifecycleScope.launch {
+            while (isActive && currentSttState == SttState.RECORDING) {
+                val elapsedSec = (SystemClock.elapsedRealtime() - sttRecordingStartTime) / 1000f
                 binding.tvRecordingTimer.text = String.format(Locale.US, "%.1f s", elapsedSec)
                 val cpu = CpuMetrics.sampleProcessCpuUsage()
-                binding.tvCpuUsage.text = String.format(Locale.US, "%.1f %%", cpu)
+                binding.tvSttCpuUsage.text = String.format(Locale.US, "%.1f %%", cpu)
                 delay(100)
             }
         }
     }
 
     private fun stopRecordingAndTranscribe() {
-        timerJob?.cancel()
-        timerJob = null
+        sttTimerJob?.cancel()
+        sttTimerJob = null
 
         val pcmAudio = audioRecorder.stopRecording()
-        val finalRecordingSec = (SystemClock.elapsedRealtime() - recordingStartTime) / 1000f
-        binding.tvRecordingTimer.text = String.format(Locale.US, "%.2f s", finalRecordingSec)
+        val finalSec = (SystemClock.elapsedRealtime() - sttRecordingStartTime) / 1000f
+        binding.tvRecordingTimer.text = String.format(Locale.US, "%.2f s", finalSec)
 
         if (pcmAudio.isEmpty()) {
-            currentState = AppState.IDLE
-            resetButtonUi()
-            showError("No speech recorded.")
+            currentSttState = SttState.IDLE
+            resetSttButtonUi()
+            showSttError("No speech recorded.")
             binding.tvTranscript.text = "No audio recorded."
             return
         }
 
-        currentState = AppState.PROCESSING
+        currentSttState = SttState.PROCESSING
         binding.btnRecord.isEnabled = false
         binding.tvRecordingStatus.text = "Status: Processing STT inference…"
         binding.tvRecordingStatus.setTextColor(Color.parseColor("#F59E0B"))
-        binding.tvTranscript.text = "Transcribing with ${modelManager.getCurrentModelInfo()?.modelName}…"
+        binding.tvTranscript.text = "Transcribing with ${sttModelManager.getCurrentModelInfo()?.modelName}…"
 
         lifecycleScope.launch {
-            val engine = modelManager.getCurrentEngine()
+            val engine = sttModelManager.getCurrentEngine()
             if (engine == null || !engine.isLoaded()) {
-                showError("STT model is not ready.")
-                resetButtonUi()
-                currentState = AppState.ERROR
+                showSttError("STT model is not ready.")
+                resetSttButtonUi()
+                currentSttState = SttState.ERROR
                 return@launch
             }
 
-            val result = engine.transcribe(pcmAudio, AudioRecorder.SAMPLE_RATE)
-            val memAfterInfer = MemoryMetrics.captureSnapshot()
-            val cpuUsage = CpuMetrics.sampleProcessCpuUsage()
+            try {
+                val result = engine.transcribe(pcmAudio, AudioRecorder.SAMPLE_RATE)
+                val memAfterInfer = MemoryMetrics.captureSnapshot()
+                val cpuUsage = CpuMetrics.sampleProcessCpuUsage()
 
-            withContext(Dispatchers.Main) {
-                currentState = AppState.COMPLETE
-                resetButtonUi()
+                withContext(Dispatchers.Main) {
+                    currentSttState = SttState.COMPLETE
+                    resetSttButtonUi()
 
-                // Display transcript
-                if (result.text.isNotEmpty()) {
-                    binding.tvTranscript.text = result.text
-                } else {
-                    binding.tvTranscript.text = "[No speech recognized]"
+                    binding.tvTranscript.text = if (result.text.isNotEmpty()) result.text else "[No speech recognized]"
+
+                    val audioDurationSec = result.audioDurationMs / 1000f
+                    binding.tvSttAudioDuration.text = SttMetrics.formatDuration(audioDurationSec)
+                    binding.tvSttInferenceTime.text = "${result.inferenceTimeMs} ms"
+                    binding.tvSttRtf.text = SttMetrics.formatRtf(result.rtf)
+
+                    if (result.rtf <= 1.0f) {
+                        val speedup = if (result.rtf > 0) 1.0f / result.rtf else 1.0f
+                        binding.tvSttRtfBadge.text = String.format(Locale.US, "✓ Real-time (%.1fx)", speedup)
+                        binding.tvSttRtfBadge.setTextColor(Color.parseColor("#10B981"))
+                    } else {
+                        binding.tvSttRtfBadge.text = "⚠ Slower than real-time"
+                        binding.tvSttRtfBadge.setTextColor(Color.parseColor("#F59E0B"))
+                    }
+
+                    binding.tvSttCpuUsage.text = String.format(Locale.US, "%.1f %%", cpuUsage)
+                    binding.tvSttMemoryStats.text = String.format(
+                        Locale.US,
+                        "Heap: %.1f MB (Used: %.1f MB) | Native: %.1f MB",
+                        memAfterInfer.totalHeapMb,
+                        memAfterInfer.usedHeapMb,
+                        memAfterInfer.nativeHeapMb
+                    )
                 }
-
-                // Display benchmark metrics
-                val audioDurationSec = result.audioDurationMs / 1000f
-                binding.tvAudioDuration.text = SttMetrics.formatDuration(audioDurationSec)
-                binding.tvInferenceTime.text = "${result.inferenceTimeMs} ms"
-                binding.tvRtf.text = SttMetrics.formatRtf(result.rtf)
-
-                if (result.rtf <= 1.0f) {
-                    val speedup = if (result.rtf > 0) 1.0f / result.rtf else 1.0f
-                    binding.tvRtfBadge.text = String.format(Locale.US, "✓ Real-time (%.1fx)", speedup)
-                    binding.tvRtfBadge.setTextColor(Color.parseColor("#10B981"))
-                } else {
-                    binding.tvRtfBadge.text = "⚠ Slower than real-time"
-                    binding.tvRtfBadge.setTextColor(Color.parseColor("#F59E0B"))
+            } catch (e: Exception) {
+                Log.e(TAG, "STT transcription error", e)
+                withContext(Dispatchers.Main) {
+                    currentSttState = SttState.ERROR
+                    resetSttButtonUi()
+                    showSttError("STT transcription error: ${e.message}")
                 }
-
-                binding.tvCpuUsage.text = String.format(Locale.US, "%.1f %%", cpuUsage)
-                binding.tvMemoryStats.text = String.format(
-                    Locale.US,
-                    "Heap: %.1f MB (Used: %.1f MB) | Native: %.1f MB",
-                    memAfterInfer.totalHeapMb,
-                    memAfterInfer.usedHeapMb,
-                    memAfterInfer.nativeHeapMb
-                )
             }
         }
     }
 
-    private fun resetButtonUi() {
+    private fun resetSttButtonUi() {
         binding.btnRecord.isEnabled = true
         binding.btnRecord.text = "START RECORDING"
         binding.btnRecord.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2563EB"))
-        binding.tvRecordingStatus.text = "Status: Idle (${selectedLanguage.displayName})"
+        binding.tvRecordingStatus.text = "Status: Idle (${selectedSttLanguage.displayName})"
         binding.tvRecordingStatus.setTextColor(Color.parseColor("#64748B"))
     }
 
-    private fun showError(message: String) {
-        binding.tvErrorMessage.text = message
-        binding.tvErrorMessage.visibility = View.VISIBLE
+    private fun showSttError(message: String) {
+        binding.tvSttErrorMessage.text = message
+        binding.tvSttErrorMessage.visibility = View.VISIBLE
     }
 
-    private fun hideError() {
-        binding.tvErrorMessage.visibility = View.GONE
+    private fun hideSttError() {
+        binding.tvSttErrorMessage.visibility = View.GONE
+    }
+
+    // ========================================================
+    // TTS MODULE
+    // ========================================================
+    private fun setupTtsUi() {
+        binding.chipGroupTtsLanguages.setOnCheckedStateChangeListener { _, checkedIds ->
+            if (checkedIds.isEmpty()) return@setOnCheckedStateChangeListener
+
+            val targetLang = when (checkedIds.first()) {
+                R.id.chipTtsEn -> Language.EN
+                R.id.chipTtsHi -> Language.HI
+                R.id.chipTtsGu -> Language.GU
+                R.id.chipTtsMr -> Language.MR
+                R.id.chipTtsKn -> Language.KN
+                R.id.chipTtsMl -> Language.ML
+                R.id.chipTtsTa -> Language.TA
+                R.id.chipTtsTe -> Language.TE
+                R.id.chipTtsBn -> Language.BN
+                R.id.chipTtsOr -> Language.OR
+                else -> Language.EN
+            }
+
+            audioPlayer.stop()
+            switchTtsLanguage(targetLang)
+        }
+
+        // Sentence sample chips
+        binding.chipSampleNormal.setOnClickListener {
+            binding.etTtsInput.setText(getSampleText(selectedTtsLanguage, "Normal"))
+        }
+        binding.chipSampleEmergency.setOnClickListener {
+            binding.etTtsInput.setText(getSampleText(selectedTtsLanguage, "Emergency"))
+        }
+        binding.chipSampleNumbers.setOnClickListener {
+            binding.etTtsInput.setText(getSampleText(selectedTtsLanguage, "Numbers"))
+        }
+        binding.chipSampleNames.setOnClickListener {
+            binding.etTtsInput.setText(getSampleText(selectedTtsLanguage, "Names"))
+        }
+
+        // Generate speech action
+        binding.btnGenerateSpeech.setOnClickListener {
+            val text = binding.etTtsInput.text?.toString()?.trim() ?: ""
+            if (text.isEmpty()) {
+                showTtsError("Please enter text to synthesize.")
+                return@setOnClickListener
+            }
+            generateSpeech(text)
+        }
+
+        // Audio playback controls
+        binding.btnPlaySpeech.setOnClickListener {
+            val result = lastTtsResult ?: return@setOnClickListener
+            startPlayback(result)
+        }
+
+        binding.btnStopSpeech.setOnClickListener {
+            audioPlayer.stop()
+            binding.btnPlaySpeech.isEnabled = lastTtsResult != null && lastTtsResult!!.audio.isNotEmpty()
+            binding.btnStopSpeech.isEnabled = false
+        }
+    }
+
+    private fun switchTtsLanguage(language: Language) {
+        selectedTtsLanguage = language
+        hideTtsError()
+
+        // Populate sample text in input
+        binding.etTtsInput.setText(getSampleText(language, "Normal"))
+
+        val isPiper = ttsManager.isPiperAvailable(language)
+        if (isPiper) {
+            val voiceName = when (language) {
+                Language.EN -> "en_US-amy-low"
+                Language.HI -> "hi_IN-pratham-medium"
+                Language.ML -> "ml_IN-meera-medium"
+                Language.TE -> "te_IN-maya-medium"
+                Language.MR -> "mr_IN-google-medium"
+                Language.BN -> "bn_BD-google-medium"
+                Language.TA -> "ta_IN-rasa_male-medium"
+                Language.GU -> "gu_epoch229-medium"
+                else -> "vits-piper"
+            }
+            binding.tvActiveTtsEngineName.text = "Piper/VITS ONNX (Primary)"
+            binding.tvActiveTtsPolicyDetails.text = "Voice: $voiceName | Policy: Primary Engine"
+        } else {
+            binding.tvActiveTtsEngineName.text = "AI4Bharat Indic-TTS (Fallback)"
+            binding.tvActiveTtsPolicyDetails.text = "Reason: Piper voice pending export | Policy: Fallback Engine"
+        }
+
+        binding.tvActiveTtsStatus.text = "Loading ${language.displayName} TTS…"
+        binding.tvActiveTtsStatus.setTextColor(Color.parseColor("#F59E0B"))
+        binding.tvTtsModelLoadDuration.text = "Loading…"
+        binding.btnGenerateSpeech.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                val memBefore = MemoryMetrics.captureSnapshot()
+                val startTime = SystemClock.elapsedRealtime()
+                val success = ttsManager.loadLanguage(language)
+                val loadTimeMs = SystemClock.elapsedRealtime() - startTime
+
+                if (success) {
+                    val engine = ttsManager.getCurrentEngine()
+                    binding.tvActiveTtsEngineName.text = engine?.engineName() ?: "TTS Engine"
+                    binding.tvActiveTtsStatus.text = "● ${language.displayName} TTS Ready ✓"
+                    binding.tvActiveTtsStatus.setTextColor(Color.parseColor("#10B981"))
+                    binding.tvTtsModelLoadDuration.text = "Load: $loadTimeMs ms"
+                    binding.btnGenerateSpeech.isEnabled = true
+
+                    val memAfter = MemoryMetrics.captureSnapshot()
+                    binding.tvTtsMemoryStats.text = String.format(
+                        Locale.US,
+                        "Heap: %.1f MB (Loaded: %.1f MB) | Native: %.1f MB",
+                        memAfter.usedHeapMb,
+                        memAfter.usedHeapMb - memBefore.usedHeapMb,
+                        memAfter.nativeHeapMb
+                    )
+                } else {
+                    binding.tvActiveTtsStatus.text = "Failed to load TTS"
+                    binding.tvActiveTtsStatus.setTextColor(Color.parseColor("#DC2626"))
+                    binding.tvTtsModelLoadDuration.text = "Error"
+                    showTtsError("Could not load TTS model for ${language.displayName}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception switching TTS language", e)
+                showTtsError("TTS loading error: ${e.message}")
+            }
+        }
+    }
+
+    private fun generateSpeech(text: String) {
+        hideTtsError()
+        binding.btnGenerateSpeech.isEnabled = false
+        binding.btnPlaySpeech.isEnabled = false
+        binding.btnStopSpeech.isEnabled = false
+        binding.tvActiveTtsStatus.text = "Synthesizing audio…"
+        binding.tvActiveTtsStatus.setTextColor(Color.parseColor("#F59E0B"))
+
+        lifecycleScope.launch {
+            val engine = ttsManager.getCurrentEngine()
+            if (engine == null || !engine.isLoaded()) {
+                showTtsError("TTS engine is not ready.")
+                binding.btnGenerateSpeech.isEnabled = true
+                return@launch
+            }
+
+            try {
+                val result = engine.synthesize(text)
+                lastTtsResult = result
+                val memAfter = MemoryMetrics.captureSnapshot()
+                val cpuUsage = CpuMetrics.sampleProcessCpuUsage()
+
+                withContext(Dispatchers.Main) {
+                    binding.btnGenerateSpeech.isEnabled = true
+                    binding.tvActiveTtsStatus.text = "● Speech Generated Successfully ✓"
+                    binding.tvActiveTtsStatus.setTextColor(Color.parseColor("#10B981"))
+
+                    val durationSec = result.audioDurationMs / 1000f
+                    binding.tvTtsAudioDuration.text = TtsMetrics.formatDuration(durationSec)
+                    binding.tvTtsSynthesisTime.text = "${result.synthesisTimeMs} ms"
+                    binding.tvTtsRtf.text = TtsMetrics.formatRtf(result.rtf)
+
+                    if (result.rtf <= 1.0f) {
+                        val speedup = if (result.rtf > 0) 1.0f / result.rtf else 1.0f
+                        binding.tvTtsRtfBadge.text = String.format(Locale.US, "✓ Real-time (%.1fx)", speedup)
+                        binding.tvTtsRtfBadge.setTextColor(Color.parseColor("#10B981"))
+                    } else {
+                        binding.tvTtsRtfBadge.text = "⚠ Slower than real-time"
+                        binding.tvTtsRtfBadge.setTextColor(Color.parseColor("#F59E0B"))
+                    }
+
+                    binding.tvTtsCpuUsage.text = String.format(Locale.US, "%.1f %%", cpuUsage)
+                    binding.tvTtsMemoryStats.text = String.format(
+                        Locale.US,
+                        "Heap: %.1f MB (Used: %.1f MB) | Native: %.1f MB",
+                        memAfter.totalHeapMb,
+                        memAfter.usedHeapMb,
+                        memAfter.nativeHeapMb
+                    )
+
+                    // Automatically start playback
+                    if (result.audio.isNotEmpty()) {
+                        startPlayback(result)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Speech synthesis exception", e)
+                withContext(Dispatchers.Main) {
+                    binding.btnGenerateSpeech.isEnabled = true
+                    showTtsError("Speech synthesis failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun startPlayback(result: TtsResult) {
+        if (result.audio.isEmpty()) return
+        binding.btnPlaySpeech.isEnabled = false
+        binding.btnStopSpeech.isEnabled = true
+        audioPlayer.play(result.audio, result.sampleRate, lifecycleScope) {
+            binding.btnPlaySpeech.isEnabled = true
+            binding.btnStopSpeech.isEnabled = false
+        }
+    }
+
+    private fun getSampleText(language: Language, category: String): String {
+        return when (language) {
+            Language.EN -> when (category) {
+                "Emergency" -> "Please evacuate the building immediately via the northern exit."
+                "Numbers" -> "Confirm delivery of 450 rations to sector 12."
+                "Names" -> "Officer Sharma and Lieutenant Khan are on patrol."
+                else -> "The primary objective is to maintain network integrity."
+            }
+            Language.HI -> when (category) {
+                "Emergency" -> "कृपया तुरंत इमारत खाली करें और सुरक्षित स्थान पर जाएं।"
+                "Numbers" -> "सेक्टर बारह में तीन सौ पचास पैकेट पहुंचाएं।"
+                "Names" -> "राहुल वर्मा और अमित पाटिल से तुरंत संपर्क करें।"
+                else -> "मुख्य नियंत्रण कक्ष से नया संदेश प्राप्त हुआ है।"
+            }
+            Language.GU -> when (category) {
+                "Emergency" -> "કૃપા કરીને તરત જ ઇમારત ખાલી કરો અને સુરક્ષિત સ્થળે જાઓ."
+                else -> "નમસ્તે, આ ઓફલાઇન સ્પીચ ટેસ્ટ બેન્ચ છે."
+            }
+            Language.MR -> when (category) {
+                "Emergency" -> "कृपया लगेच इमारत रिकामी करा आणि सुरक्षित ठिकाणी जा."
+                else -> "नमस्कार, मुख्य नियंत्रण कक्षातून नवीन संदेश आला आहे."
+            }
+            Language.TA -> when (category) {
+                "Emergency" -> "தயவுசெய்து உடனடியாக கட்டிடத்தை காலி செய்யுங்கள்."
+                else -> "வணக்கம், இது ஆஃப்லைன் பேச்சு சோதனை பெஞ்ச் ஆகும்."
+            }
+            Language.TE -> when (category) {
+                "Emergency" -> "దయచేసి వెంటనే భవనాన్ని ఖాళీ చేయండి."
+                else -> "నమస్కారం, ఇది ఆఫ్‌లైన్ స్పీచ్ పరీక్ష."
+            }
+            Language.KN -> when (category) {
+                "Emergency" -> "ದಯವಿಟ್ಟು ತಕ್ಷಣವೇ ಕಟ್ಟಡವನ್ನು ಖಾಲಿ ಮಾಡಿ."
+                else -> "ನಮಸ್ಕಾರ, ಇದು ಆಫ್‌ಲೈನ್ ಧ್ವನಿ ಪರೀಕ್ಷೆ."
+            }
+            Language.ML -> when (category) {
+                "Emergency" -> "ദയവായി ഉടൻ കെട്ടിടം ഒഴിഞ്ഞുപോവുക."
+                else -> "നമസ്കാരം, ഇത് ഓഫ്‌ലൈൻ ശബ്ദ പരിശോധനയാണ്."
+            }
+            Language.BN -> when (category) {
+                "Emergency" -> "অনুগ্রহ করে অবিলম্বে ভবনটি খালি করুন।"
+                else -> "নমস্কার, এটি অফলাইন স্পিচ টেস্ট বেঞ্চ।"
+            }
+            Language.OR -> "ନମସ୍କାର, ଏହା ଏକ ପରୀକ୍ଷା।"
+        }
+    }
+
+    private fun showTtsError(message: String) {
+        binding.tvTtsErrorMessage.text = message
+        binding.tvTtsErrorMessage.visibility = View.VISIBLE
+    }
+
+    private fun hideTtsError() {
+        binding.tvTtsErrorMessage.visibility = View.GONE
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        timerJob?.cancel()
+        sttTimerJob?.cancel()
         if (audioRecorder.isRecording()) {
             audioRecorder.stopRecording()
         }
+        audioPlayer.stop()
         lifecycleScope.launch {
-            modelManager.unloadCurrentModel()
+            sttModelManager.unloadCurrentModel()
+            ttsManager.unloadCurrentModel()
         }
     }
 }

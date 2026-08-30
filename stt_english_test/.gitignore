@@ -85,3 +85,5 @@ models/
 app/libs/
 app/src/main/assets/english/*.onnx
 app/src/main/assets/indicconformer/*.onnx
+app/src/main/assets/tts/
+app/src/main/assets/espeak-ng-data/
