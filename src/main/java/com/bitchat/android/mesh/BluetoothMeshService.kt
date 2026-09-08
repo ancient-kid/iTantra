@@ -327,6 +327,10 @@ true
             override fun getPeerNickname(peerID: String): String? {
                 return peerManager.getPeerNickname(peerID)
             }
+
+            override fun getPeerIdForAddress(address: String): String? {
+                return connectionManager.addressPeerMap[address]
+            }
             
             override fun getNetworkSize(): Int {
                 return peerManager.getActivePeerCount()
@@ -1165,7 +1169,8 @@ val map = emptyMap<String, String>()
      */
     fun sendBroadcastAnnounce() {
         serviceScope.launch {
-            val nickname = try { com.bitchat.android.services.NicknameProvider.getNickname( myPeerID) } catch (_: Exception) { myPeerID }
+            val nickname = delegate?.getNickname()?.takeIf { it.isNotBlank() }
+                ?: try { com.bitchat.android.services.NicknameProvider.getNickname(myPeerID) } catch (_: Exception) { myPeerID }
             
             // Get the static public key for the announcement
             val staticKey = encryptionService.getStaticPublicKey()
@@ -1214,8 +1219,6 @@ val map = emptyMap<String, String>()
             } ?: announcePacket
             
             broadcastRoutedPacket(RoutedPacket(signedPacket))
-            // Track announce for sync
-            // removed onPublicPacketSeen
         }
     }
     
@@ -1225,7 +1228,8 @@ val map = emptyMap<String, String>()
     fun sendAnnouncementToPeer(peerID: String) {
         if (peerManager.hasAnnouncedToPeer(peerID)) return
         
-        val nickname = try { com.bitchat.android.services.NicknameProvider.getNickname( myPeerID) } catch (_: Exception) { myPeerID }
+        val nickname = delegate?.getNickname()?.takeIf { it.isNotBlank() }
+            ?: try { com.bitchat.android.services.NicknameProvider.getNickname(myPeerID) } catch (_: Exception) { myPeerID }
         
         // Get the static public key for the announcement
         val staticKey = encryptionService.getStaticPublicKey()
@@ -1530,6 +1534,11 @@ val map = emptyMap<String, String>()
         }
     }
     
+    fun getPeerNickname(peerID: String): String? = peerManager.getPeerNickname(peerID)
+    
+    fun isPeerDirectlyConnected(peerID: String): Boolean =
+        peerManager.getPeerInfo(peerID)?.isDirectConnection == true || connectionManager.addressPeerMap.containsValue(peerID)
+
     // MARK: - Panic Mode Support
     
     /**

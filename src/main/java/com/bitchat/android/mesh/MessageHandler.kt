@@ -86,22 +86,26 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 Log.w(TAG, "Failed to parse NoisePayload from $peerID")
                 return true
             }
-            
             when (noisePayload.type) {
                 com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE -> {
                     // Decode TLV private message exactly like iOS
                     val privateMessage = com.bitchat.android.model.PrivateMessagePacket.decode(noisePayload.data)
                     if (privateMessage != null) {
-
+                        val isRelayed = packet.ttl < com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+                        val relayAddr = routed.relayAddress
+                        val relayPeerId = relayAddr?.let { delegate?.getPeerIdForAddress(it) }
+                        val relayNick = if (isRelayed) {
+                            (relayPeerId?.let { delegate?.getPeerNickname(it) } ?: relayAddr?.take(8))
+                        } else null
                         
                         // Create BitchatMessage - preserve source packet timestamp
                         val message = BitchatMessage(
                             id = privateMessage.messageID,
-                            sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+                            sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                             content = privateMessage.content,
                             timestamp = java.util.Date(packet.timestamp.toLong()),
-                            isRelay = false,
-                            originalSender = null,
+                            isRelay = isRelayed,
+                            originalSender = relayNick,
                             isPrivate = true,
                             recipientNickname = delegate?.getMyNickname(),
                             senderPeerID = peerID,
@@ -122,20 +126,25 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     if (file != null) {
                         Log.d(TAG, "Encrypted file from $peerID: ${file.fileSize} bytes")
                         val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
-// removed features
+                        val isRelayed = packet.ttl < com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+                        val relayAddr = routed.relayAddress
+                        val relayPeerId = relayAddr?.let { delegate?.getPeerIdForAddress(it) }
+                        val relayNick = if (isRelayed) {
+                            (relayPeerId?.let { delegate?.getPeerNickname(it) } ?: relayAddr?.take(8))
+                        } else null
+
                         val message = BitchatMessage(
                             id = uniqueMsgId,
-                            sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+                            sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                             content = "",
-// removed features
                             timestamp = java.util.Date(packet.timestamp.toLong()),
-                            isRelay = false,
+                            isRelay = isRelayed,
+                            originalSender = relayNick,
                             isPrivate = true,
                             recipientNickname = delegate?.getMyNickname(),
                             senderPeerID = peerID
                         )
 
-// removed LiveVoiceManager
                         delegate?.onMessageReceived(message)
 
                         // Send delivery ACK with generated message ID
@@ -404,9 +413,8 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             handleBroadcastMessage(routed)
         } else if (recipientID.toHexString() == myPeerID) {
             // PRIVATE MESSAGE FOR US
-            handlePrivateMessage(packet, peerID)
+            handlePrivateMessage(routed)
         }
-// removed PacketRelayManager
     }
 
     /** Validate and ingest an ephemeral public push-to-talk frame. */
@@ -421,7 +429,6 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
         if (ageMs !in -30_000L..30_000L) return false
         val peerInfo = delegate?.getPeerInfo(peerID)
         if (peerInfo == null || !peerInfo.isVerifiedNickname) return false
-// removed voice frame handling
         return true
     }
     
@@ -440,22 +447,27 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
         }
         
         try {
+            val isRelayed = packet.ttl < com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+            val relayAddr = routed.relayAddress
+            val relayPeerId = relayAddr?.let { delegate?.getPeerIdForAddress(it) }
+            val relayNick = if (isRelayed) {
+                (relayPeerId?.let { delegate?.getPeerNickname(it) } ?: relayAddr?.take(8))
+            } else null
+
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
             val isFileTransfer = com.bitchat.android.protocol.MessageType.fromValue(packet.type) == com.bitchat.android.protocol.MessageType.FILE_TRANSFER
             val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
-
-// removed features
                 val message = BitchatMessage(
                     id = java.util.UUID.randomUUID().toString().uppercase(),
-                    sender = delegate?.getPeerNickname(peerID) ?: "unknown",
+                    sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                     content = "",
-// removed features
                     senderPeerID = peerID,
-                    timestamp = Date(packet.timestamp.toLong())
+                    timestamp = Date(packet.timestamp.toLong()),
+                    isRelay = isRelayed,
+                    originalSender = relayNick
                 )
-// removed LiveVoiceManager
-                    delegate?.onMessageReceived(message)
+                delegate?.onMessageReceived(message)
                 return
             } else if (isFileTransfer) {
                 Log.w(TAG, "FILE_TRANSFER decode failed (broadcast) from ${peerID.take(8)}")
@@ -464,10 +476,12 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             // Fallback: plain text
             val message = BitchatMessage(
                 id = java.util.UUID.randomUUID().toString().uppercase(),
-                sender = delegate?.getPeerNickname(peerID) ?: "unknown",
+                sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                 content = String(packet.payload, Charsets.UTF_8),
                 senderPeerID = peerID,
-                timestamp = Date(packet.timestamp.toLong())
+                timestamp = Date(packet.timestamp.toLong()),
+                isRelay = isRelayed,
+                originalSender = relayNick
             )
             delegate?.onMessageReceived(message)
         } catch (e: Exception) {
@@ -478,7 +492,9 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
     /**
      * Handle (decrypted) private message addressed to us
      */
-    private suspend fun handlePrivateMessage(packet: BitchatPacket, peerID: String) {
+    private suspend fun handlePrivateMessage(routed: RoutedPacket) {
+        val packet = routed.packet
+        val peerID = routed.peerID ?: packet.senderID.toHexString()
         try {
             val isFileTransfer = com.bitchat.android.protocol.MessageType.fromValue(packet.type) ==
                 com.bitchat.android.protocol.MessageType.FILE_TRANSFER
@@ -499,23 +515,27 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 return
             }
 
+            val isRelayed = packet.ttl < com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+            val relayAddr = routed.relayAddress
+            val relayPeerId = relayAddr?.let { delegate?.getPeerIdForAddress(it) }
+            val relayNick = if (isRelayed) {
+                (relayPeerId?.let { delegate?.getPeerNickname(it) } ?: relayAddr?.take(8))
+            } else null
+
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
             val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
-
-// removed features
                 val message = BitchatMessage(
                     id = java.util.UUID.randomUUID().toString().uppercase(),
-                    sender = delegate?.getPeerNickname(peerID) ?: "unknown",
+                    sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                     content = "",
-// removed features
                     senderPeerID = peerID,
                     timestamp = Date(packet.timestamp.toLong()),
+                    isRelay = isRelayed,
+                    originalSender = relayNick,
                     isPrivate = true,
                     recipientNickname = delegate?.getMyNickname()
                 )
-                Log.d(TAG, "📄 Saved incoming file to ")
-// removed LiveVoiceManager
                 delegate?.onMessageReceived(message)
                 return
             } else if (isFileTransfer) {
@@ -524,10 +544,14 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
 
             // Fallback: plain text
             val message = BitchatMessage(
-                sender = delegate?.getPeerNickname(peerID) ?: "unknown",
+                sender = delegate?.getPeerNickname(peerID) ?: peerID.take(8),
                 content = String(packet.payload, Charsets.UTF_8),
                 senderPeerID = peerID,
-                timestamp = Date(packet.timestamp.toLong())
+                timestamp = Date(packet.timestamp.toLong()),
+                isRelay = isRelayed,
+                originalSender = relayNick,
+                isPrivate = true,
+                recipientNickname = delegate?.getMyNickname()
             )
             delegate?.onMessageReceived(message)
 
@@ -553,8 +577,6 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             // Peer disconnect
             delegate?.removePeer(peerID)
         }
-        
-// removed PacketRelayManager
     }
     
     /**
@@ -607,6 +629,7 @@ interface MessageHandlerDelegate {
     fun removePeer(peerID: String)
     fun updatePeerNickname(peerID: String, nickname: String)
     fun getPeerNickname(peerID: String): String?
+    fun getPeerIdForAddress(address: String): String? = null
     fun getNetworkSize(): Int
     fun getMyNickname(): String?
     fun getPeerInfo(peerID: String): PeerInfo?

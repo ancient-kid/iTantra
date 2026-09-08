@@ -369,7 +369,8 @@ val manager: Any? = null
             Log.d(TAG, "Source Routing: First hop $firstHop not connected. Falling back to standard broadcast logic.")
         }
         
-        if (packet.recipientID != SpecialRecipients.BROADCAST) {
+        val isBroadcast = packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST)
+        if (!isBroadcast) {
             val recipientID = packet.recipientID?.toHexString() ?: ""
 
             // Try to find the recipient in server connections (subscribedDevices)

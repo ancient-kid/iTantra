@@ -219,7 +219,7 @@ object TransportBridgeService {
         }
 
         return PreparedForward(
-            packet = packet.copy(ttl = (packet.ttl - 1u).toUByte()),
+            packet = packet,
             seenKey = key,
             reservedAtMs = now
         )

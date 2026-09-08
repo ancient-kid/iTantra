@@ -87,8 +87,16 @@ class MainActivity : AppCompatActivity() {
             inputEditText.text.clear()
             appendLog("You: $text")
             
-            meshService?.sendMessage(text)
-            com.bitchat.android.wifiaware.WifiAwareController.getService()?.sendMessage(text)
+            try {
+                meshService?.sendMessage(text)
+            } catch (e: Exception) {
+                appendLog("Error sending via BLE: ${e.message}")
+            }
+            try {
+                com.bitchat.android.wifiaware.WifiAwareController.getService()?.sendMessage(text)
+            } catch (e: Exception) {
+                appendLog("Error sending via Wi-Fi Aware: ${e.message}")
+            }
         }
     }
 
@@ -173,6 +181,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startMeshService() {
+        val deviceName = com.bitchat.android.utils.DeviceUtils.getDeviceName(this)
+        com.bitchat.android.services.NicknameProvider.setNickname(deviceName)
+
         // 1. Initialize BLE Mesh
         val btAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
         if (btAdapter != null && btAdapter.isEnabled) {
@@ -186,7 +197,12 @@ class MainActivity : AppCompatActivity() {
                             return
                         }
                         val sender = message.sender.ifBlank { message.senderPeerID?.take(8) ?: "Peer" }
-                        appendLog("[$sender] (via BLE): ${message.content}")
+                        if (message.isRelay) {
+                            val relay = message.originalSender?.ifBlank { "mesh relay" } ?: "mesh relay"
+                            appendLog("[$sender via $relay] (relayed mesh message, via BLE): ${message.content}")
+                        } else {
+                            appendLog("[$sender] (direct 1-hop, via BLE): ${message.content}")
+                        }
                     }
 
                     override fun didUpdatePeerList(peers: List<String>) {
@@ -199,10 +215,17 @@ class MainActivity : AppCompatActivity() {
                         lastObservedPeers = currentSet
 
                         for (peer in newlyJoined) {
-                            appendLog("🟢 Peer connected: ${peer.take(8)} (via BLE)")
+                            val nick = meshService?.getPeerNickname(peer) ?: peer.take(8)
+                            val isDirect = meshService?.isPeerDirectlyConnected(peer) ?: false
+                            if (isDirect) {
+                                appendLog("🟢 Direct Peer connected: $nick (1-hop, via BLE)")
+                            } else {
+                                appendLog("🌐 Mesh Peer discovered: $nick (multi-hop, via BLE)")
+                            }
                         }
                         for (peer in newlyLeft) {
-                            appendLog("🔴 Peer disconnected: ${peer.take(8)} (via BLE)")
+                            val nick = meshService?.getPeerNickname(peer) ?: peer.take(8)
+                            appendLog("🔴 Peer disconnected: $nick (via BLE)")
                         }
                         if (currentSet.isEmpty()) {
                             appendLog("Searching for nearby BLE peers (auto-retry active)...")
@@ -210,26 +233,29 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun didReceiveChannelLeave(channel: String, fromPeer: String) {
-                        appendLog("Peer ${fromPeer.take(8)} left $channel (BLE)")
+                        val nick = meshService?.getPeerNickname(fromPeer) ?: fromPeer.take(8)
+                        appendLog("Peer $nick left $channel (BLE)")
                     }
 
                     override fun didReceiveDeliveryAck(messageID: String, recipientPeerID: String) {
-                        appendLog("Delivered to ${recipientPeerID.take(8)} (via BLE)")
+                        val nick = meshService?.getPeerNickname(recipientPeerID) ?: recipientPeerID.take(8)
+                        appendLog("Delivered to $nick (via BLE)")
                     }
 
                     override fun didReceiveReadReceipt(messageID: String, recipientPeerID: String) {
-                        appendLog("Read by ${recipientPeerID.take(8)} (via BLE)")
+                        val nick = meshService?.getPeerNickname(recipientPeerID) ?: recipientPeerID.take(8)
+                        appendLog("Read by $nick (via BLE)")
                     }
 
                     override fun didReceiveVerifyChallenge(peerID: String, payload: ByteArray, timestampMs: Long) {}
                     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {}
                     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? = null
-                    override fun getNickname(): String = "User"
+                    override fun getNickname(): String = deviceName
                     override fun isFavorite(peerID: String): Boolean = false
                 }
                 service.startServices()
                 meshService = service
-                appendLog("My Peer ID: ${service.myPeerID}")
+                appendLog("Device: $deviceName | Peer ID: ${service.myPeerID.take(8)}")
             }
         } else {
             appendLog("⚠️ Bluetooth is OFF.")
@@ -247,7 +273,12 @@ class MainActivity : AppCompatActivity() {
                             return
                         }
                         val sender = message.sender.ifBlank { message.senderPeerID?.take(8) ?: "Peer" }
-                        appendLog("[$sender] (via Wi-Fi Aware): ${message.content}")
+                        if (message.isRelay) {
+                            val relay = message.originalSender?.ifBlank { "mesh relay" } ?: "mesh relay"
+                            appendLog("[$sender via $relay] (relayed mesh message, via Wi-Fi Aware): ${message.content}")
+                        } else {
+                            appendLog("[$sender] (direct 1-hop, via Wi-Fi Aware): ${message.content}")
+                        }
                     }
 
                     override fun didUpdatePeerList(peers: List<String>) {
@@ -269,7 +300,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? = null
-                    override fun getNickname(): String = "User"
+                    override fun getNickname(): String = deviceName
                     override fun isFavorite(peerID: String): Boolean = false
                 }
                 com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabledByDefault = true)
@@ -281,7 +312,7 @@ class MainActivity : AppCompatActivity() {
             appendLog("ℹ️ Wi-Fi Aware not supported by hardware (${awareStatus.reason}).")
         }
 
-        appendLog("Ready to chat over P2P mesh!")
+        appendLog("Ready to chat over 7-hop P2P mesh!")
     }
 
     override fun onDestroy() {

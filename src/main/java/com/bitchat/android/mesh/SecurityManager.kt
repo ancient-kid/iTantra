@@ -115,9 +115,9 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
 
-        // Skip handshakes not addressed to us
+        // Skip local processing for handshakes not addressed to us (valid transit packet)
         if (packet.recipientID?.toHexString() != myPeerID) {
-            return false
+            return true
         }
 
         // Skip our own handshake messages

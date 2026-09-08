@@ -36,4 +36,49 @@ object DeviceUtils {
 
         return diagonalInches >= 7.0 || isLargeScreen || isXLargeScreen || smallestWidthDp >= 600
     }
+
+    /**
+     * Gets the user-friendly device name for display in the mesh network.
+     * Tries Bluetooth name -> System device name -> Manufacturer + Model.
+     */
+    fun getDeviceName(context: Context): String {
+        try {
+            val btAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            val btName = btAdapter?.name
+            if (!btName.isNullOrBlank() && btName != "null") {
+                return btName.trim()
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val deviceName = android.provider.Settings.Global.getString(
+                context.contentResolver,
+                android.provider.Settings.Global.DEVICE_NAME
+            )
+            if (!deviceName.isNullOrBlank() && deviceName != "null") {
+                return deviceName.trim()
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val btName = android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                "bluetooth_name"
+            )
+            if (!btName.isNullOrBlank() && btName != "null") {
+                return btName.trim()
+            }
+        } catch (_: Exception) {}
+
+        val manufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { 
+            if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() 
+        }
+        val model = android.os.Build.MODEL
+        return if (model.startsWith(manufacturer, ignoreCase = true)) {
+            model.trim()
+        } else {
+            "$manufacturer $model".trim()
+        }
+    }
 }
+

@@ -16,7 +16,7 @@ import kotlinx.coroutines.channels.actor
  * from the same peer simultaneously, causing session management conflicts.
  */
 class PacketProcessor(private val myPeerID: String) {
-private val debugManager: Any? = null
+    private val debugManager: Any? = null
     
     companion object {
         private const val TAG = "PacketProcessor"
@@ -32,7 +32,7 @@ private val debugManager: Any? = null
     }
     
     // Packet relay manager for centralized relay decisions
-// removed PacketRelayManager
+    private val packetRelayManager = PacketRelayManager(myPeerID)
     
     // Coroutines
     private val processorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -42,7 +42,15 @@ private val debugManager: Any? = null
     // This prevents race conditions in session management
     private val peerActors = mutableMapOf<String, CompletableDeferred<Unit>>()
     
-    // removed getOrCreate    
+    @OptIn(ObsoleteCoroutinesApi::class)
+    private fun getOrCreateActorForPeer(peerID: String) = processorScope.actor<RoutedPacket>(
+        capacity = Channel.UNLIMITED
+    ) {
+        for (packet in channel) {
+            handleReceivedPacket(packet)
+        }
+    }
+    
     // Cache actors to reuse them
     private val actors = mutableMapOf<String, kotlinx.coroutines.channels.SendChannel<RoutedPacket>>()
     
@@ -63,11 +71,17 @@ private val debugManager: Any? = null
             return
         }
         
+        // Get or create actor for this peer
+        val actor = actors.getOrPut(peerID) { getOrCreateActorForPeer(peerID) }
+        
+        // Send packet to peer's dedicated actor for serialized processing
         processorScope.launch {
             try {
-                handleReceivedPacket(routed)
+                actor.send(routed)
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to process packet for ${formatPeerForLog(peerID)}: ${e.message}")
+                Log.w(TAG, "Failed to send packet to actor for ${formatPeerForLog(peerID)}: ${e.message}")
+                // Fallback to direct processing if actor fails
+                handleReceivedPacket(routed)
             }
         }
     }
@@ -76,6 +90,22 @@ private val debugManager: Any? = null
      * Set up the packet relay manager with its delegate
      */
     fun setupRelayManager() {
+        packetRelayManager.delegate = object : PacketRelayManagerDelegate {
+            override fun getNetworkSize(): Int {
+                return delegate?.getNetworkSize() ?: 1
+            }
+            
+            override fun getBroadcastRecipient(): ByteArray {
+                return delegate?.getBroadcastRecipient() ?: ByteArray(0)
+            }
+            
+            override fun broadcastPacket(routed: RoutedPacket) {
+                delegate?.relayPacket(routed)
+            }
+            override fun sendToPeer(peerID: String, routed: RoutedPacket): Boolean {
+                return delegate?.sendToPeer(peerID, routed) ?: false
+            }
+        }
     }
     
     /**
@@ -92,13 +122,6 @@ private val debugManager: Any? = null
 
         var validPacket = true
         val messageType = MessageType.fromValue(packet.type)
-        // Verbose logging to debug manager (and chat via ChatViewModel observer)
-        try {
-            val mt = messageType?.name ?: packet.type.toString()
-            val routeDevice = routed.relayAddress
-            val nick = delegate?.getPeerNickname(peerID)
-// removed logIncomingPacket
-        } catch (_: Exception) { }
         
         
         // Handle public packet types (no address check needed)
@@ -111,15 +134,19 @@ private val debugManager: Any? = null
             MessageType.FRAGMENT -> handleFragment(routed)
             MessageType.REQUEST_SYNC -> handleRequestSync(routed)
             else -> {
-                // Handle private packet types
-                when (messageType) {
-                    MessageType.NOISE_HANDSHAKE -> validPacket = handleNoiseHandshake(routed)
-                    MessageType.NOISE_ENCRYPTED -> validPacket = handleNoiseEncrypted(routed)
-                    MessageType.FILE_TRANSFER -> handleMessage(routed)
-                    else -> {
-                        validPacket = false
-                        Log.w(TAG, "Unknown message type: ${packet.type}")
+                // Handle private packet types (address check required)
+                if (packetRelayManager.isPacketAddressedToMe(packet)) {
+                    when (messageType) {
+                        MessageType.NOISE_HANDSHAKE -> validPacket = handleNoiseHandshake(routed)
+                        MessageType.NOISE_ENCRYPTED -> validPacket = handleNoiseEncrypted(routed)
+                        MessageType.FILE_TRANSFER -> handleMessage(routed)
+                        else -> {
+                            validPacket = false
+                            Log.w(TAG, "Unknown message type: ${packet.type}")
+                        }
                     }
+                } else {
+                    // Not addressed to us; only relay handling below applies
                 }
             }
         }
@@ -129,7 +156,7 @@ private val debugManager: Any? = null
             delegate?.updatePeerLastSeen(peerID)
             
             // CENTRALIZED RELAY LOGIC: Handle relay decisions for all packets not addressed to us
-// removed PacketRelayManager
+            packetRelayManager.handlePacketRelay(routed)
         }
     }
     
@@ -185,7 +212,7 @@ private val debugManager: Any? = null
             )
         }
         
-// removed PacketRelayManager
+        // Fragment relay is now handled by centralized PacketRelayManager
     }
 
     /**
@@ -236,7 +263,7 @@ private val debugManager: Any? = null
         actors.clear()
         
         // Shutdown the relay manager
-// removed PacketRelayManager
+        packetRelayManager.shutdown()
         
         // Cancel the main scope
         processorScope.cancel()
