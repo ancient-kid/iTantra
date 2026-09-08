@@ -81,8 +81,10 @@ __pycache__/
 *.bin
 *.pt
 *.tflite
-models/
+/models/
 stt_english_test/models/
 stt_english_test/app/libs/
 stt_english_test/app/src/main/assets/english/*.onnx
 stt_english_test/app/src/main/assets/indicconformer/*.onnx
+**/espeak-ng-data/
+

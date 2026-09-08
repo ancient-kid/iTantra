@@ -1,0 +1,18 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Staging area for Hugging Face uploads (461 MB of model files)
+model_packs/
+
+# eSpeak NG phoneme dictionaries (downloaded on demand)
+app/src/main/assets/espeak-ng-data/
+

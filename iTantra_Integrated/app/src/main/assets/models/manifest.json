@@ -1,0 +1,323 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "stt-en",
+      "kind": "STT",
+      "languages": [
+        "en"
+      ],
+      "displayName": "English speech recognition",
+      "modelName": "NeMo Conformer-CTC small (INT8)",
+      "phonemizer": "NONE",
+      "license": "Apache-2.0",
+      "bundled": true,
+      "assetDir": "english",
+      "files": [
+        {
+          "name": "model.int8.onnx",
+          "size": 46419854,
+          "sha256": "66cfde4ce0b6da9e1a4352e58f0c968f87da23070cf229c81ae0d520cddad2a2"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 12636,
+          "sha256": "47d6abaa11050cf2ad835cf08cb91633fffb7fa201a440302704bb6d44417a56"
+        }
+      ]
+    },
+    {
+      "id": "tts-en",
+      "kind": "TTS",
+      "languages": [
+        "en"
+      ],
+      "displayName": "English voice",
+      "modelName": "piper en_US-amy-low",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": true,
+      "assetDir": "tts\\piper\\en",
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 63104657,
+          "sha256": "8275b02c37c4ce6483b26a91704807e6de0c3f0bf8068e5d3b3598ab0da4253e"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 763,
+          "sha256": "42d1a69ed2b91a51928a711aa228ed9f3dc021c6d359a3e9c4f37eb1d20f80bd"
+        }
+      ]
+    },
+    {
+      "id": "stt-indic",
+      "kind": "STT",
+      "languages": [
+        "hi",
+        "bn",
+        "mr",
+        "ta",
+        "te",
+        "ml",
+        "gu",
+        "kn",
+        "or"
+      ],
+      "displayName": "Indic speech recognition (9 languages)",
+      "modelName": "IndicConformer CTC (INT8)",
+      "phonemizer": "NONE",
+      "license": "Apache-2.0",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.int8.onnx",
+          "size": 196977855,
+          "sha256": "b99a01834cd1a72cd9be682a0b9543df6b152ef7dfceba88d3dbf59fbb77075d",
+          "url": "https://huggingface.co/meetsync/indic-conformer-onnx-sherpa/resolve/main/model.int8.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 73238,
+          "sha256": "743aeb755c4489bc734a6705578552b072ffb45055aeeb5db19ae7761a424882",
+          "url": "https://huggingface.co/meetsync/indic-conformer-onnx-sherpa/resolve/main/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-kn",
+      "kind": "TTS",
+      "languages": [
+        "kn"
+      ],
+      "displayName": "Kannada voice",
+      "modelName": "MMS VITS (kan)",
+      "phonemizer": "NONE",
+      "license": "CC-BY-NC-4.0",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 114045444,
+          "sha256": "9644cfa46c5802c4c2c8196f91eedc0cd54d46527bbc32589ebaf967ed07591f",
+          "url": "https://huggingface.co/willwade/mms-tts-multilingual-models-onnx/resolve/main/kan/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 487,
+          "sha256": "a4a44037f7492c9e5b69a4483250e54af9a2d528bd4e19de95a21ff0c5e82a8a",
+          "url": "https://huggingface.co/willwade/mms-tts-multilingual-models-onnx/resolve/main/kan/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-or",
+      "kind": "TTS",
+      "languages": [
+        "or"
+      ],
+      "displayName": "Odia voice",
+      "modelName": "MMS VITS (ory)",
+      "phonemizer": "NONE",
+      "license": "CC-BY-NC-4.0",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 114046136,
+          "sha256": "a90e1a48d4aa404c12504f47a89bbe310110a9d43dd2e093346f539efc8728a1",
+          "url": "https://huggingface.co/willwade/mms-tts-multilingual-models-onnx/resolve/main/ory/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 495,
+          "sha256": "bc90e5423446ca730aef6b56a4656cb07421c7538429a50b9c396fe0758fd587",
+          "url": "https://huggingface.co/willwade/mms-tts-multilingual-models-onnx/resolve/main/ory/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-hi",
+      "kind": "TTS",
+      "languages": [
+        "hi"
+      ],
+      "displayName": "Hindi voice",
+      "modelName": "hi_IN-pratham-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 63145178,
+          "sha256": "1d77908e8ab724c813c5cefaa48feadc9f2670ec5d145f83bade981c428740a0",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-hi/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 940,
+          "sha256": "ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-hi/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-ml",
+      "kind": "TTS",
+      "languages": [
+        "ml"
+      ],
+      "displayName": "Malayalam voice",
+      "modelName": "ml_IN-meera-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 62950174,
+          "sha256": "d79717e88f9d956ccf6a3b176428be616effa26d922f152a9eea0d8fdacece43",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-ml/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 968,
+          "sha256": "e8a50ae0c75612d18cfcf3f90800dca79f961e3ed97f9574f3535194469187fd",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-ml/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-gu",
+      "kind": "TTS",
+      "languages": [
+        "gu"
+      ],
+      "displayName": "Gujarati voice",
+      "modelName": "gu_IN-cmu-indic_low",
+      "phonemizer": "ESPEAK",
+      "license": "CC-BY-SA-4.0",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 76334560,
+          "sha256": "172d7a76b3af77e6bc58667e7afc4f323640ddd2e5ac409f93af58a7e20070dc",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-gu/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 281,
+          "sha256": "5854caefdb6a96161d7a452eebb7015cb3f30cfd2e3e471780729175b5c55fd2",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-gu/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-te",
+      "kind": "TTS",
+      "languages": [
+        "te"
+      ],
+      "displayName": "Telugu voice",
+      "modelName": "te_IN-maya-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 62950044,
+          "sha256": "c3518ad4e3ca8ea6059c1e002f3772068f634960f58b237a96ff629db1c6200e",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-te/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 1129,
+          "sha256": "30615b46df803181140b628ca264f33860e90a0834977936274da840dd36c905",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-te/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-mr",
+      "kind": "TTS",
+      "languages": [
+        "mr"
+      ],
+      "displayName": "Marathi voice",
+      "modelName": "mr_IN-google-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 76768179,
+          "sha256": "e1200d474a74ebd6d1737be2c7affe56f1f9efc18915d4595d7f5c2b15cf06f4",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-mr/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 1175,
+          "sha256": "e337e9300aeb8af92eafa0f14e3230a0132e42dd3e2af44a3873edd03387a9eb",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-mr/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-bn",
+      "kind": "TTS",
+      "languages": [
+        "bn"
+      ],
+      "displayName": "Bengali voice",
+      "modelName": "bn_BD-google-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 76782515,
+          "sha256": "f2e7518ed5534a755024a48c71b80bf617efaf12570bbdf3ce255a9526a8afd3",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-bn/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 1175,
+          "sha256": "e337e9300aeb8af92eafa0f14e3230a0132e42dd3e2af44a3873edd03387a9eb",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-bn/tokens.txt"
+        }
+      ]
+    },
+    {
+      "id": "tts-ta",
+      "kind": "TTS",
+      "languages": [
+        "ta"
+      ],
+      "displayName": "Tamil voice",
+      "modelName": "ta_IN-rasa_male-medium",
+      "phonemizer": "ESPEAK",
+      "license": "MIT",
+      "bundled": false,
+      "files": [
+        {
+          "name": "model.onnx",
+          "size": 63511037,
+          "sha256": "0df057808d684ce59e3fd1cb02d6bfd5ef860d14a9e3c515c65ca5c61062ce39",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-ta/model.onnx"
+        },
+        {
+          "name": "tokens.txt",
+          "size": 1097,
+          "sha256": "2e91df9694a4d27d349e2cdb34abe1ffd9038dd27b498fcdfbb94f5b4a95bc74",
+          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-ta/tokens.txt"
+        }
+      ]
+    }
+  ]
+}
