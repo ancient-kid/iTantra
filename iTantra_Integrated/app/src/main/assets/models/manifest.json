@@ -37,7 +37,7 @@
       "phonemizer": "ESPEAK",
       "license": "MIT",
       "bundled": true,
-      "assetDir": "tts\\piper\\en",
+      "assetDir": "tts/piper/en",
       "files": [
         {
           "name": "model.onnx",
@@ -153,13 +153,13 @@
           "name": "model.onnx",
           "size": 63145178,
           "sha256": "1d77908e8ab724c813c5cefaa48feadc9f2670ec5d145f83bade981c428740a0",
-          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-hi/model.onnx"
+          "url": "https://huggingface.co/csukuangfj/vits-piper-hi_IN-pratham-medium/resolve/main/hi_IN-pratham-medium.onnx"
         },
         {
           "name": "tokens.txt",
           "size": 940,
           "sha256": "ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d",
-          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-hi/tokens.txt"
+          "url": "https://huggingface.co/csukuangfj/vits-piper-hi_IN-pratham-medium/resolve/main/tokens.txt"
         }
       ]
     },
@@ -205,13 +205,13 @@
           "name": "model.onnx",
           "size": 76334560,
           "sha256": "172d7a76b3af77e6bc58667e7afc4f323640ddd2e5ac409f93af58a7e20070dc",
-          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-gu/model.onnx"
+          "url": "https://huggingface.co/csukuangfj/vits-mimic3-gu_IN-cmu-indic_low/resolve/main/gu_IN-cmu-indic_low.onnx"
         },
         {
           "name": "tokens.txt",
           "size": 281,
           "sha256": "5854caefdb6a96161d7a452eebb7015cb3f30cfd2e3e471780729175b5c55fd2",
-          "url": "https://huggingface.co/anurag/itantra-models/resolve/main/tts-gu/tokens.txt"
+          "url": "https://huggingface.co/csukuangfj/vits-mimic3-gu_IN-cmu-indic_low/resolve/main/tokens.txt"
         }
       ]
     },

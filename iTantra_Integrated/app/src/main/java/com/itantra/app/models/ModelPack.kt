@@ -62,7 +62,11 @@ sealed class ModelSource {
 
     /** Files packaged in the APK; sherpa-onnx is handed the AssetManager. */
     data class Bundled(val assetDir: String) : ModelSource() {
-        override fun pathFor(fileName: String): String = "$assetDir/$fileName"
+        override fun pathFor(fileName: String): String {
+            val cleanDir = assetDir.replace('\\', '/').trim('/')
+            val cleanFile = fileName.replace('\\', '/').trimStart('/')
+            return if (cleanDir.isEmpty()) cleanFile else "$cleanDir/$cleanFile"
+        }
     }
 
     /** Files downloaded to internal storage; sherpa-onnx gets a null AssetManager. */

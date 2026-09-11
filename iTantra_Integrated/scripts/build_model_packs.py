@@ -112,7 +112,7 @@ def bundled_pack(pack_id, kind, languages, display, model_name, phonemizer,
         "phonemizer": phonemizer,
         "license": license_id,
         "bundled": True,
-        "assetDir": asset_dir,
+        "assetDir": asset_dir.replace("\\", "/"),
         "files": files,
     }
 
