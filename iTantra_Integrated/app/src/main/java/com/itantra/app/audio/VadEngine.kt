@@ -24,16 +24,23 @@ class VadEngine(context: Context) {
 
         private const val ASSET_PATH = "vad/silero_vad.onnx"
 
-        /** Model's own speech/silence probability cut-off. */
-        private const val THRESHOLD = 0.5f
+        /**
+         * Speech detection confidence cut-off.
+         * Tuned to 0.35f for mobile microphones where unboosted speech amplitude
+         * can be significantly lower than studio recordings.
+         */
+        private const val THRESHOLD = 0.30f
 
-        /** Ignore blips shorter than this - coughs, taps, wind gusts. */
-        private const val MIN_SPEECH_DURATION_SEC = 0.25f
+        /**
+         * Minimum speech duration (150ms) to filter out quick transient noises
+         * (taps, clicks) while promptly acknowledging short words (e.g. "हां", "Help").
+         */
+        private const val MIN_SPEECH_DURATION_SEC = 0.15f
 
-        /** How long a pause has to last before we call the utterance finished. */
-        private const val MIN_SILENCE_DURATION_SEC = 0.7f
+        /** How long a pause must last before the utterance is considered finished. */
+        private const val MIN_SILENCE_DURATION_SEC = 0.60f
 
-        /** Samples per acceptWaveform() call; the model was trained on this window. */
+        /** Samples per acceptWaveform() call; Silero VAD v4 window is 512 samples at 16 kHz. */
         private const val WINDOW_SIZE = 512
 
         /** Safety cap so the model itself force-ends a runaway utterance. */
@@ -41,7 +48,7 @@ class VadEngine(context: Context) {
     }
 
     private val vad: Vad? = try {
-        Vad(
+        val instance = Vad(
             context.assets,
             VadModelConfig(
                 sileroVadModelConfig = SileroVadModelConfig(
@@ -56,6 +63,8 @@ class VadEngine(context: Context) {
                 numThreads = 1
             )
         )
+        Log.i(TAG, "Silero VAD loaded successfully (threshold=$THRESHOLD, minSpeech=${MIN_SPEECH_DURATION_SEC}s, minSilence=${MIN_SILENCE_DURATION_SEC}s)")
+        instance
     } catch (e: Exception) {
         Log.e(TAG, "Failed to load Silero VAD model - auto-stop disabled for this session", e)
         null
@@ -69,13 +78,20 @@ class VadEngine(context: Context) {
 
     val isAvailable: Boolean get() = vad != null
 
+    /** Invoked on the first transition to speech in an utterance. */
+    var onSpeechDetected: (() -> Unit)? = null
+
+    @Synchronized
     fun reset() {
         sawSpeech = false
         pending.clear()
         vad?.reset()
+        Log.d(TAG, "VAD state reset")
     }
 
+    @Synchronized
     fun release() {
+        pending.clear()
         vad?.release()
     }
 
@@ -83,9 +99,10 @@ class VadEngine(context: Context) {
      * Feeds one chunk of 16 kHz mono PCM16 samples, as delivered by
      * [AudioRecorder]'s recording loop.
      *
-     * @return true exactly once per utterance: on the transition from having
-     * heard speech to a sustained silence long enough to call it finished.
+     * @return true exactly once per utterance: when an utterance has finished,
+     * detected either via sherpa-onnx's native segment queue or the speech-to-silence edge.
      */
+    @Synchronized
     fun onChunk(samples: ShortArray): Boolean {
         val engine = vad ?: return false
 
@@ -93,27 +110,40 @@ class VadEngine(context: Context) {
         var finished = false
 
         while (pending.size >= WINDOW_SIZE) {
-            val window = FloatArray(WINDOW_SIZE) { i -> pending[i].toFloat() / 32768.0f }
+            // Apply a modest 1.25x gain boost for VAD normalization so phone mics cleanly cross threshold
+            val window = FloatArray(WINDOW_SIZE) { i ->
+                val norm = (pending[i].toFloat() / 32768.0f) * 1.25f
+                norm.coerceIn(-1.0f, 1.0f)
+            }
             repeat(WINDOW_SIZE) { pending.removeFirst() }
 
             engine.acceptWaveform(window)
+
+            val hasCompletedSegment = !engine.empty()
             val speaking = engine.isSpeechDetected()
 
-            if (speaking) {
+            if (speaking && !sawSpeech) {
                 sawSpeech = true
-            } else if (sawSpeech) {
-                // The model's own minSilenceDuration has already been satisfied
-                // internally before isSpeechDetected() flips back to false, so
-                // this edge is the "utterance finished" signal.
-                finished = true
-                sawSpeech = false
+                Log.d(TAG, "VAD: Speech started")
+                onSpeechDetected?.invoke()
             }
 
-            // Drain any segments the native side finalized, so internal state
-            // (front()/pop()) doesn't grow unbounded - their audio is unused
-            // here since AudioRecorder already holds the authoritative buffer.
-            while (!engine.empty()) {
-                engine.pop()
+            if (hasCompletedSegment) {
+                // Native sherpa-onnx segment queue finalized a complete speech segment
+                finished = true
+                sawSpeech = false
+                Log.i(TAG, "VAD: Utterance finalized via segment queue (auto-stop triggered)")
+                while (!engine.empty()) {
+                    engine.pop()
+                }
+            } else if (sawSpeech && !speaking) {
+                // Speech finished falling edge after minSilenceDuration
+                finished = true
+                sawSpeech = false
+                Log.i(TAG, "VAD: Utterance finished via falling edge (auto-stop triggered)")
+                while (!engine.empty()) {
+                    engine.pop()
+                }
             }
         }
 

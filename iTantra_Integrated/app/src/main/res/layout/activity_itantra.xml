@@ -220,15 +220,51 @@
                         android:textColor="@color/text_primary"
                         android:textSize="13sp" />
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchVadAutoStop"
+                    <!-- Mode Selection: PTT vs VAD -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="OPERATION MODE"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/toggleModeGroup"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        app:singleSelection="true"
+                        app:selectionRequired="true">
+
+                        <Button
+                            android:id="@+id/btnModeVad"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="🤖 VAD (Auto-Send)"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/btnModePtt"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="🎙️ PTT (Manual)"
+                            android:textSize="12sp" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                    <TextView
+                        android:id="@+id/tvModeExplanation"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:checked="true"
-                        android:text="Auto-send when you stop talking (VAD)"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp" />
+                        android:text="Voice activated: tap or hold to talk, sends automatically when you stop speaking."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
 
                     <Button
                         android:id="@+id/btnPushToTalk"
@@ -236,7 +272,7 @@
                         android:layout_height="128dp"
                         android:layout_marginTop="12dp"
                         android:backgroundTint="@color/accent_blue"
-                        android:text="HOLD TO TALK"
+                        android:text="TAP TO TALK (VAD)"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 

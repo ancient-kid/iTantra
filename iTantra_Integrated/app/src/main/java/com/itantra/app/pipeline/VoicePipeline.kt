@@ -79,6 +79,7 @@ class VoicePipeline(
     var onTranscript: ((String) -> Unit)? = null
     var onIncoming: ((MeshTransport.Incoming) -> Unit)? = null
     var onTelemetryChanged: (() -> Unit)? = null
+    var onSpeechDetected: (() -> Unit)? = null
 
     @Volatile
     var state: State = State.IDLE
@@ -96,6 +97,7 @@ class VoicePipeline(
 
     init {
         scope.launch { consumeInbox() }
+        vadEngine.onSpeechDetected = { onSpeechDetected?.invoke() }
     }
 
     // ------------------------------------------------------------------

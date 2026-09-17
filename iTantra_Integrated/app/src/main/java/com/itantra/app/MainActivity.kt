@@ -1,13 +1,19 @@
 package com.itantra.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
@@ -58,6 +64,7 @@ class MainActivity : AppCompatActivity() {
 
     private var recordingTimerJob: Job? = null
     private var captureStartedAt = 0L
+    private var touchDownTime = 0L
     private var lastIncoming: MeshTransport.Incoming? = null
     private var diagnosticsVisible = false
     private var selectedLanguage: Language = Language.EN
@@ -99,6 +106,13 @@ class MainActivity : AppCompatActivity() {
             onState = { state -> runOnUiThread { renderPipelineState(state) } }
             onTranscript = { text -> runOnUiThread { renderOutgoingTranscript(text) } }
             onTelemetryChanged = { runOnUiThread { renderDiagnostics() } }
+            onSpeechDetected = {
+                runOnUiThread {
+                    if (state == VoicePipeline.State.LISTENING) {
+                        binding.btnPushToTalk.text = "SPEECH DETECTED 🟢"
+                    }
+                }
+            }
             priorityProvider = {
                 if (binding.switchAlertPriority.isChecked) VoicePayload.Priority.ALERT
                 else VoicePayload.Priority.NORMAL
@@ -109,7 +123,7 @@ class MainActivity : AppCompatActivity() {
 
         wireLanguageChips()
         wirePushToTalk()
-        wireVadToggle()
+        wireModeSelector()
         wirePlaybackControls()
         wireDiagnostics()
 
@@ -250,14 +264,47 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------------
-    // Push to talk
+    // Push to talk and VAD Mode
     // ------------------------------------------------------------------
+
+    private fun wireModeSelector() {
+        binding.toggleModeGroup.check(R.id.btnModeVad)
+        setMode(isVad = true)
+
+        binding.toggleModeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                setMode(isVad = (checkedId == R.id.btnModeVad))
+            }
+        }
+    }
+
+    private fun setMode(isVad: Boolean) {
+        pipeline.vadAutoStopEnabled = isVad
+        if (isVad) {
+            binding.tvModeExplanation.text =
+                "Voice activated: tap or hold to talk, sends automatically when you stop speaking."
+        } else {
+            binding.tvModeExplanation.text =
+                "Manual walkie-talkie: hold down button while speaking, release to send immediately."
+        }
+        if (pipeline.state == VoicePipeline.State.IDLE) {
+            resetButtonForActiveMode()
+        }
+    }
 
     private fun wirePushToTalk() {
         binding.btnPushToTalk.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     view.isPressed = true
+                    touchDownTime = SystemClock.elapsedRealtime()
+
+                    if (pipeline.state == VoicePipeline.State.LISTENING) {
+                        // Tapping while already listening in VAD mode finishes and sends immediately
+                        endTalking()
+                        return@setOnTouchListener true
+                    }
+
                     if (hasMicPermission()) {
                         beginTalking()
                     } else {
@@ -269,7 +316,16 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     view.isPressed = false
                     view.performClick()
-                    endTalking()
+
+                    val duration = SystemClock.elapsedRealtime() - touchDownTime
+                    if (pipeline.vadAutoStopEnabled && duration < 350L && pipeline.state == VoicePipeline.State.LISTENING) {
+                        // In VAD mode, a short tap initiates hands-free listening: keep listening!
+                        // Do NOT abort; VAD will automatically finalize when speech pauses.
+                        binding.btnPushToTalk.text = "LISTENING... (Speak now)"
+                    } else {
+                        // Traditional hold-and-release (PTT mode or sustained hold in VAD mode)
+                        endTalking()
+                    }
                     true
                 }
                 else -> false
@@ -277,19 +333,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun wireVadToggle() {
-        pipeline.vadAutoStopEnabled = binding.switchVadAutoStop.isChecked
-        binding.switchVadAutoStop.setOnCheckedChangeListener { _, checked ->
-            pipeline.vadAutoStopEnabled = checked
-        }
-    }
-
     private fun beginTalking() {
         if (!pipeline.startTalking()) return
 
         captureStartedAt = SystemClock.elapsedRealtime()
-        binding.btnPushToTalk.text = "RELEASE TO SEND"
+        binding.btnPushToTalk.text =
+            if (pipeline.vadAutoStopEnabled) "LISTENING... (Speak now)" else "RELEASE TO SEND"
         binding.btnPushToTalk.backgroundTint(R.color.accent_red)
+        triggerHapticFeedback(isAutoStop = false)
 
         recordingTimerJob?.cancel()
         recordingTimerJob = lifecycleScope.launch {
@@ -305,13 +356,18 @@ class MainActivity : AppCompatActivity() {
         recordingTimerJob?.cancel()
         recordingTimerJob = null
 
-        binding.btnPushToTalk.text = "HOLD TO TALK"
-        binding.btnPushToTalk.backgroundTint(R.color.accent_blue)
+        resetButtonForActiveMode()
 
         val priority =
             if (binding.switchAlertPriority.isChecked) VoicePayload.Priority.ALERT
             else VoicePayload.Priority.NORMAL
         pipeline.stopTalkingAndSend(priority)
+    }
+
+    private fun resetButtonForActiveMode() {
+        binding.btnPushToTalk.text =
+            if (pipeline.vadAutoStopEnabled) "TAP TO TALK (VAD)" else "HOLD TO TALK (PTT)"
+        binding.btnPushToTalk.backgroundTint(R.color.accent_blue)
     }
 
     // ------------------------------------------------------------------
@@ -405,9 +461,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderPipelineState(state: VoicePipeline.State) {
+        if (state != VoicePipeline.State.LISTENING) {
+            // When capture ends (via VAD auto-stop, max hold timeout, or manual send),
+            // immediately reset the UI button and timer so the user receives visual and
+            // haptic confirmation that the utterance is finished and sending.
+            if (recordingTimerJob != null) {
+                recordingTimerJob?.cancel()
+                recordingTimerJob = null
+                resetButtonForActiveMode()
+                triggerHapticFeedback(isAutoStop = true)
+            }
+        }
+
         binding.tvPipelineState.text = when (state) {
             VoicePipeline.State.IDLE ->
-                if (pipeline.vadAutoStopEnabled) "Idle — hold to talk, pause to auto-send"
+                if (pipeline.vadAutoStopEnabled) "Idle — tap or hold to talk, pause to auto-send"
                 else "Idle — hold the button to talk"
             VoicePipeline.State.LOADING_MODELS -> "Loading speech models…"
             VoicePipeline.State.LISTENING -> "Listening…"
@@ -425,6 +493,46 @@ class MainActivity : AppCompatActivity() {
                 else -> Color.parseColor("#F59E0B")
             }
         )
+    }
+
+    private fun triggerHapticFeedback(isAutoStop: Boolean) {
+        try {
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .build()
+
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                manager?.defaultVibrator ?: (getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            } ?: return
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (isAutoStop) {
+                    // Strong, unmistakable double pulse at maximum amplitude (255)
+                    val timings = longArrayOf(0, 90, 60, 90)
+                    val amplitudes = intArrayOf(0, 255, 0, 255)
+                    val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
+                    vibrator.vibrate(effect, audioAttributes)
+                } else {
+                    // Crisp 35ms start tick
+                    val effect = VibrationEffect.createOneShot(35, 220)
+                    vibrator.vibrate(effect, audioAttributes)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                if (isAutoStop) {
+                    vibrator.vibrate(longArrayOf(0, 90, 60, 90), -1)
+                } else {
+                    vibrator.vibrate(35)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Haptic feedback error", e)
+        }
     }
 
     private fun renderOutgoingTranscript(text: String) {
