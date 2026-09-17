@@ -19,7 +19,8 @@ object PipelineTelemetry {
         val sttRtf: Float,
         val transmitMs: Long,
         val transcriptChars: Int,
-        val links: List<String>
+        val links: List<String>,
+        val autoStopped: Boolean = false
     ) {
         /** Speech-end to packet-handed-to-radio. */
         val speechEndToSendMs: Long get() = sttInferenceMs + transmitMs
@@ -136,11 +137,12 @@ object PipelineTelemetry {
             builder.append(
                 String.format(
                     Locale.US,
-                    "  Speech captured  %d ms\n" +
+                    "  Speech captured  %d ms (%s)\n" +
                         "  STT inference    %d ms (RTF %.2f)\n" +
                         "  Mesh handoff     %d ms over %s\n" +
                         "  Speech-end to air %d ms for %d chars\n",
                     it.captureMs,
+                    if (it.autoStopped) "VAD auto-stop" else "manual release",
                     it.sttInferenceMs, it.sttRtf,
                     it.transmitMs,
                     if (it.links.isEmpty()) "no active link" else it.links.joinToString(" + "),

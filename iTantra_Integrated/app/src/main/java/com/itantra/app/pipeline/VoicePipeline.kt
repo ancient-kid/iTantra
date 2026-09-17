@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import com.itantra.app.audio.PriorityAudioPlayer
+import com.itantra.app.audio.VadEngine
 import com.itantra.app.diagnostics.PipelineTelemetry
 import com.itantra.app.models.ModelPack
 import com.itantra.app.models.ModelStore
@@ -15,7 +16,9 @@ import com.itantra.stt.model.ModelManager
 import com.itantra.stt.model.TtsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,6 +40,9 @@ class VoicePipeline(
     companion object {
         private const val TAG = "VoicePipeline"
         private const val MIN_SAMPLES = 1600 // 100 ms at 16 kHz
+
+        /** Belt-and-suspenders cap so a held button with sustained noise still ends. */
+        private const val MAX_HOLD_MS = 20_000L
     }
 
     enum class State {
@@ -54,6 +60,16 @@ class VoicePipeline(
     private val ttsManager = TtsManager(context.applicationContext)
     private val recorder = AudioRecorder()
     private val player = PriorityAudioPlayer(context.applicationContext)
+    private val vadEngine = VadEngine(context.applicationContext)
+
+    /** Turned off from the UI as a known-good fallback if VAD misbehaves. */
+    @Volatile
+    var vadAutoStopEnabled: Boolean = true
+
+    /** Read at the moment a send actually happens - manual release or VAD auto-stop alike. */
+    var priorityProvider: () -> VoicePayload.Priority = { VoicePayload.Priority.NORMAL }
+
+    private var maxHoldJob: Job? = null
 
     /** Incoming turns are played one at a time, in arrival order. */
     private val inbox = Channel<MeshTransport.Incoming>(Channel.UNLIMITED)
@@ -63,6 +79,7 @@ class VoicePipeline(
     var onTranscript: ((String) -> Unit)? = null
     var onIncoming: ((MeshTransport.Incoming) -> Unit)? = null
     var onTelemetryChanged: (() -> Unit)? = null
+    var onSpeechDetected: (() -> Unit)? = null
 
     @Volatile
     var state: State = State.IDLE
@@ -80,6 +97,7 @@ class VoicePipeline(
 
     init {
         scope.launch { consumeInbox() }
+        vadEngine.onSpeechDetected = { onSpeechDetected?.invoke() }
     }
 
     // ------------------------------------------------------------------
@@ -145,10 +163,12 @@ class VoicePipeline(
     }
 
     fun release() {
+        maxHoldJob?.cancel()
         try {
             if (recorder.isRecording()) recorder.stopRecording()
         } catch (_: Exception) {
         }
+        vadEngine.release()
         player.stop()
         inbox.close()
         scope.launch {
@@ -175,7 +195,8 @@ class VoicePipeline(
         }
         if (player.isPlaying()) player.stop()
 
-        val started = recorder.startRecording(scope)
+        vadEngine.reset()
+        val started = recorder.startRecording(scope, onChunk = ::handleVadChunk)
         if (!started) {
             emit("Microphone could not be opened.")
             state = State.ERROR
@@ -184,15 +205,35 @@ class VoicePipeline(
 
         captureStartedAt = SystemClock.elapsedRealtime()
         state = State.LISTENING
+
+        maxHoldJob?.cancel()
+        maxHoldJob = scope.launch {
+            delay(MAX_HOLD_MS)
+            if (state == State.LISTENING) {
+                emit("Held too long - sending automatically.")
+                stopTalkingAndSend(priorityProvider())
+            }
+        }
         return true
+    }
+
+    /** Called from [AudioRecorder]'s recording loop (an IO-dispatcher coroutine) for every chunk. */
+    private fun handleVadChunk(chunk: ShortArray) {
+        if (!vadAutoStopEnabled || !vadEngine.isAvailable) return
+        if (vadEngine.onChunk(chunk)) {
+            // Launched as a separate coroutine rather than called inline, so the
+            // recording loop that just invoked us isn't cancelling itself mid-callback.
+            scope.launch { stopTalkingAndSend(priorityProvider(), autoStopped = true) }
+        }
     }
 
     /**
      * Ends capture, transcribes on-device, and broadcasts the transcript over the
      * mesh with its language tag, priority flag and capture timestamp.
      */
-    fun stopTalkingAndSend(priority: VoicePayload.Priority) {
+    fun stopTalkingAndSend(priority: VoicePayload.Priority, autoStopped: Boolean = false) {
         if (state != State.LISTENING) return
+        maxHoldJob?.cancel()
 
         val captureMs = SystemClock.elapsedRealtime() - captureStartedAt
         val samples = recorder.stopRecording()
@@ -245,7 +286,8 @@ class VoicePipeline(
                         sttRtf = result.rtf,
                         transmitMs = transmitMs,
                         transcriptChars = transcript.length,
-                        links = links.map { it.displayName }
+                        links = links.map { it.displayName },
+                        autoStopped = autoStopped
                     )
                 )
                 if (links.isEmpty()) PipelineTelemetry.recordSendFailure()
@@ -254,7 +296,8 @@ class VoicePipeline(
                 emit(
                     if (links.isEmpty()) "No active mesh link - message not transmitted."
                     else "Sent over ${links.joinToString(" + ") { it.displayName }} " +
-                        "(STT ${result.inferenceTimeMs} ms)."
+                        "(STT ${result.inferenceTimeMs} ms)" +
+                        (if (autoStopped) " - auto-stopped." else ".")
                 )
                 state = State.IDLE
             } catch (e: Exception) {
@@ -269,6 +312,7 @@ class VoicePipeline(
     /** Cancels an in-flight capture without transmitting anything. */
     fun cancelTalking() {
         if (state != State.LISTENING) return
+        maxHoldJob?.cancel()
         try {
             recorder.stopRecording()
         } catch (_: Exception) {
