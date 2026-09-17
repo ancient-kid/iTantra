@@ -99,12 +99,17 @@ class MainActivity : AppCompatActivity() {
             onState = { state -> runOnUiThread { renderPipelineState(state) } }
             onTranscript = { text -> runOnUiThread { renderOutgoingTranscript(text) } }
             onTelemetryChanged = { runOnUiThread { renderDiagnostics() } }
+            priorityProvider = {
+                if (binding.switchAlertPriority.isChecked) VoicePayload.Priority.ALERT
+                else VoicePayload.Priority.NORMAL
+            }
         }
 
         binding.tvDeviceIdentity.text = "Device: ${transport.deviceName}"
 
         wireLanguageChips()
         wirePushToTalk()
+        wireVadToggle()
         wirePlaybackControls()
         wireDiagnostics()
 
@@ -272,6 +277,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun wireVadToggle() {
+        pipeline.vadAutoStopEnabled = binding.switchVadAutoStop.isChecked
+        binding.switchVadAutoStop.setOnCheckedChangeListener { _, checked ->
+            pipeline.vadAutoStopEnabled = checked
+        }
+    }
+
     private fun beginTalking() {
         if (!pipeline.startTalking()) return
 
@@ -394,7 +406,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderPipelineState(state: VoicePipeline.State) {
         binding.tvPipelineState.text = when (state) {
-            VoicePipeline.State.IDLE -> "Idle — hold the button to talk"
+            VoicePipeline.State.IDLE ->
+                if (pipeline.vadAutoStopEnabled) "Idle — hold to talk, pause to auto-send"
+                else "Idle — hold the button to talk"
             VoicePipeline.State.LOADING_MODELS -> "Loading speech models…"
             VoicePipeline.State.LISTENING -> "Listening…"
             VoicePipeline.State.TRANSCRIBING -> "Transcribing on device…"

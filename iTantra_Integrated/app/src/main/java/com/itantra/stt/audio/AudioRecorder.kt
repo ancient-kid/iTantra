@@ -39,7 +39,7 @@ class AudioRecorder {
     fun isRecording(): Boolean = isRecording
 
     @SuppressLint("MissingPermission")
-    fun startRecording(coroutineScope: CoroutineScope): Boolean {
+    fun startRecording(coroutineScope: CoroutineScope, onChunk: ((ShortArray) -> Unit)? = null): Boolean {
         if (isRecording) {
             Log.w(TAG, "Recording already in progress")
             return false
@@ -93,6 +93,7 @@ class AudioRecorder {
                         synchronized(bufferLock) {
                             pcmOutputStream.write(byteBuffer.array())
                         }
+                        onChunk?.invoke(buffer.copyOf(readCount))
                     }
                 }
             }
