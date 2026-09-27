@@ -72,17 +72,20 @@ Two notes on how this changed from the test bench:
 
 | | Before | Now |
 |---|---|---|
-| APK | 853 MB | **153 MB** |
-| native libs | 81 MB (3 ABIs) | 28 MB (arm64-v8a only) |
+| APK | 853 MB | **~175 MB** |
+| native libs | 81 MB (3 ABIs) | ~49 MB (arm64-v8a + armeabi-v7a) |
 | models in APK | 771 MB | 122 MB (English + espeak-ng data) |
 
 Downloadable catalogue is 866 MB total, but a realistic install is far smaller: English
 alone is 0 MB extra, and one Indic language costs 188 MB (shared STT) + ~65 MB (voice).
 Each additional Indic language after that is voice-only.
 
-The ABI change is worth knowing about: `armeabi-v7a` and `x86_64` were dropped. Every
-realistic target phone is arm64, but this does mean the app **no longer runs on an x86
-emulator** — restore the ABI in `app/build.gradle.kts` if you need that for the test bench.
+The ABI change is worth knowing about: the APK ships `arm64-v8a` and `armeabi-v7a`, and
+`x86`/`x86_64` were dropped. `armeabi-v7a` is required for older and budget phones that run a
+32-bit userspace (common on Android Go and low-end Android 12 devices, even on 64-bit chips).
+Without it they refuse the APK with "App not installed" (`INSTALL_FAILED_NO_MATCHING_ABIS`).
+Because x86 was dropped, the app **does not run on an x86 emulator**. Restore that ABI in
+`app/build.gradle.kts` if you need it for the test bench.
 
 ## Hosting the packs
 

@@ -19,9 +19,11 @@ android {
         versionName = "1.0"
 
         ndk {
-            // Every realistic target phone is arm64. Dropping the other ABIs
-            // removes ~53 MB of native libraries from the APK.
-            abiFilters.add("arm64-v8a")
+            // arm64 for modern phones, armeabi-v7a for older/budget phones that run a
+            // 32-bit userspace (common on Android Go and low-end Android 12 devices,
+            // even on 64-bit chips). Without v7a those phones reject the APK with
+            // INSTALL_FAILED_NO_MATCHING_ABIS. x86/x86_64 are still dropped.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 

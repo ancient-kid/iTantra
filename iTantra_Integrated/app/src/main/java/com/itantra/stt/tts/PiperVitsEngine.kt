@@ -79,10 +79,13 @@ class PiperVitsEngine(
             loaded = true
             loadTimeMs = SystemClock.elapsedRealtime() - startTime
             Log.i(TAG, "Loaded Piper/VITS TTS in ${loadTimeMs}ms (Sample rate: ${tts?.sampleRate()} Hz)")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Also catches Errors (OutOfMemoryError on low-RAM / 32-bit devices,
+            // UnsatisfiedLinkError) and rethrows them as Exceptions so callers'
+            // existing failure handling applies instead of crashing the app.
             Log.e(TAG, "Failed to initialize Piper/VITS TTS", e)
             unload()
-            throw e
+            throw e as? Exception ?: RuntimeException(e.toString(), e)
         }
     }
 
