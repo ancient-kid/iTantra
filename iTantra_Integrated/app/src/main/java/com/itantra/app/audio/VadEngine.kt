@@ -65,7 +65,7 @@ class VadEngine(context: Context) {
         )
         Log.i(TAG, "Silero VAD loaded successfully (threshold=$THRESHOLD, minSpeech=${MIN_SPEECH_DURATION_SEC}s, minSilence=${MIN_SILENCE_DURATION_SEC}s)")
         instance
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Log.e(TAG, "Failed to load Silero VAD model - auto-stop disabled for this session", e)
         null
     }

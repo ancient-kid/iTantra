@@ -67,10 +67,13 @@ class NemoConformerEngine(
             loaded = true
             loadTimeMs = SystemClock.elapsedRealtime() - startTime
             Log.i(TAG, "Loaded ${modelInfo.modelName} in ${loadTimeMs}ms")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Also catches Errors (OutOfMemoryError on low-RAM / 32-bit devices,
+            // UnsatisfiedLinkError) and rethrows them as Exceptions so callers'
+            // existing failure handling applies instead of crashing the app.
             Log.e(TAG, "Failed to load ${modelInfo.modelName}", e)
             unload()
-            throw e
+            throw e as? Exception ?: RuntimeException(e.toString(), e)
         }
     }
 

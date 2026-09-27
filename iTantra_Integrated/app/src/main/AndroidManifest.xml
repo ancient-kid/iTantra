@@ -36,6 +36,15 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="tiramisu" />
 
+    <!-- The permissions above make aapt infer these as required hardware. Every radio is
+         optional at runtime (the mesh reports what is unavailable), so don't let store
+         filtering hide the app from older devices that lack one of them. -->
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi.aware" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/ic_btn_speak_now"
